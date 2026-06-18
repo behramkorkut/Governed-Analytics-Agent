@@ -1,0 +1,10 @@
+[project]
+name = "governed-analytics-agent"
+version = "0.1.0"
+description = "Governed analytics agent: dbt Medallion + MetricFlow semantic layer + LLM agent over the semantic layer (no raw text-to-SQL)."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "duckdb>=1.5.4",
+    "faker>=40.23.0",
+]

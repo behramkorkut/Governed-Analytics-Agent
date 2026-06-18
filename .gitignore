@@ -1,0 +1,23 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Secrets / local config
+.env
+
+# Data artifacts (regenerated from scripts — never committed)
+data/raw/
+data/*.duckdb
+data/*.duckdb.wal
+
+# dbt artifacts
+target/
+dbt_packages/
+logs/
