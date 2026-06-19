@@ -1,0 +1,15 @@
+# dbt connection profile (kept inside the project for portability).
+# Run dbt with:  dbt run --profiles-dir .
+#
+# The DuckDB file path comes from the WAREHOUSE_DB env var (12-factor),
+# defaulting to the project's data/warehouse.duckdb. It must be the SAME
+# file that load_bronze.py wrote, because dbt reads the `bronze` schema
+# from it and writes silver/gold back into it.
+retail_dwh:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "{{ env_var('WAREHOUSE_DB', 'data/warehouse.duckdb') }}"
+      schema: main
+      threads: 4

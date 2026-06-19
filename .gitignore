@@ -21,3 +21,9 @@ data/*.duckdb.wal
 target/
 dbt_packages/
 logs/
+**/.user.yml
+
+# docs 
+docs
+docs/*
+journaldebord.md

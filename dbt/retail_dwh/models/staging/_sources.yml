@@ -1,0 +1,15 @@
+version: 2
+
+# Declares the Bronze tables (loaded by scripts/load_bronze.py) as dbt
+# "sources". Staging models read from these via {{ source('bronze', ...) }},
+# which also lets dbt track lineage from the raw layer onward.
+sources:
+  - name: bronze
+    description: "Raw, untransformed source extracts landed into DuckDB."
+    schema: bronze
+    tables:
+      - name: customers
+      - name: products
+      - name: stores
+      - name: orders
+      - name: order_items

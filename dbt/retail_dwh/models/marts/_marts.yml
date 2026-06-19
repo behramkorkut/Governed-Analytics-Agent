@@ -1,0 +1,81 @@
+version: 2
+
+models:
+  - name: dim_customers
+    description: "Customer dimension (Gold)."
+    columns:
+      - name: customer_id
+        data_tests: [not_null, unique]
+      - name: country
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["France", "Germany", "Spain", "Italy", "Belgium", "Other"]
+
+  - name: dim_products
+    description: "Product dimension (Gold)."
+    columns:
+      - name: product_id
+        data_tests: [not_null, unique]
+      - name: category
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["Electronics", "Clothing", "Home", "Sports"]
+
+  - name: dim_stores
+    description: "Store dimension (Gold)."
+    columns:
+      - name: store_id
+        data_tests: [not_null, unique]
+
+  - name: dim_dates
+    description: "Conformed date dimension (Gold)."
+    columns:
+      - name: date_id
+        data_tests: [not_null, unique]
+      - name: date_day
+        data_tests: [not_null, unique]
+
+  - name: fact_sales
+    description: "Sales fact, grain = one order line (Gold)."
+    columns:
+      - name: sales_id
+        data_tests: [not_null, unique]
+      - name: customer_id
+        description: "FK -> dim_customers."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_customers')
+                field: customer_id
+      - name: product_id
+        description: "FK -> dim_products."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_products')
+                field: product_id
+      - name: store_id
+        description: "FK -> dim_stores."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_stores')
+                field: store_id
+      - name: date_id
+        description: "FK -> dim_dates."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_dates')
+                field: date_id
+      - name: status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["completed", "returned", "cancelled"]

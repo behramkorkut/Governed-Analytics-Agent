@@ -1,0 +1,60 @@
+version: 2
+
+models:
+  - name: stg_customers
+    description: "Cleaned & conformed customers (Silver)."
+    columns:
+      - name: customer_id
+        description: "Natural key."
+        data_tests: [not_null, unique]
+      - name: country
+        description: "Standardized country name."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["France", "Germany", "Spain", "Italy", "Belgium", "Other"]
+      - name: signup_date
+        data_tests: [not_null]
+
+  - name: stg_products
+    description: "Cleaned products with unit margin (Silver)."
+    columns:
+      - name: product_id
+        data_tests: [not_null, unique]
+      - name: category
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["Electronics", "Clothing", "Home", "Sports"]
+
+  - name: stg_stores
+    description: "Cleaned stores (Silver)."
+    columns:
+      - name: store_id
+        data_tests: [not_null, unique]
+
+  - name: stg_orders
+    description: "Cleaned orders (Silver)."
+    columns:
+      - name: order_id
+        data_tests: [not_null, unique]
+      - name: status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["completed", "returned", "cancelled"]
+      - name: channel
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["online", "in_store"]
+
+  - name: stg_order_items
+    description: "Order line items (Silver)."
+    columns:
+      - name: order_item_id
+        data_tests: [not_null, unique]
+      - name: quantity
+        data_tests: [not_null]

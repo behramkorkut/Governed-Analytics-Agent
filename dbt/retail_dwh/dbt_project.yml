@@ -1,0 +1,28 @@
+name: "retail_dwh"
+version: "1.0.0"
+config-version: 2
+
+# This profile name must match an entry in profiles.yml
+profile: "retail_dwh"
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+# Medallion materialization strategy:
+#  - staging (Silver) -> views   : cheap, always fresh, just cleans/conforms
+#  - marts   (Gold)   -> tables  : materialized for fast analytical reads
+models:
+  retail_dwh:
+    staging:
+      +materialized: view
+      +schema: silver
+    marts:
+      +materialized: table
+      +schema: gold
