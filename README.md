@@ -1,5 +1,16 @@
 # Governed Analytics Agent
 
+![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
+![uv](https://img.shields.io/badge/packaging-uv-DE5FE9?logo=astral&logoColor=white)
+![dbt](https://img.shields.io/badge/dbt-1.11-FF694B?logo=dbt&logoColor=white)
+![DuckDB](https://img.shields.io/badge/DuckDB-warehouse-FFF000?logo=duckdb&logoColor=black)
+![MetricFlow](https://img.shields.io/badge/MetricFlow-semantic%20layer-30A46C)
+![Claude](https://img.shields.io/badge/Claude-tool%20use-D97757?logo=anthropic&logoColor=white)
+![Streamlit](https://img.shields.io/badge/Streamlit-dashboard-FF4B4B?logo=streamlit&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Colima--ready-2496ED?logo=docker&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-20%20passing-brightgreen?logo=pytest&logoColor=white)
+![License](https://img.shields.io/badge/license-MIT-blue)
+
 > Ask business questions in plain language and get **governed, deterministic**
 > answers — an LLM agent that reasons over a **dbt + MetricFlow semantic layer**,
 > never over raw SQL.
