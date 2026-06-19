@@ -5,8 +5,12 @@ description = "Governed analytics agent: dbt Medallion + MetricFlow semantic lay
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "anthropic>=0.111.0",
     "dbt-duckdb>=1.8",
     "dbt-metricflow>=0.13.0",
     "duckdb>=1.5.4",
     "faker>=40.23.0",
+    "pandas>=2.3.3",
+    "pydantic-settings>=2.14.2",
+    "streamlit>=1.58.0",
 ]
