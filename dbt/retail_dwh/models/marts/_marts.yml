@@ -30,11 +30,16 @@ models:
         data_tests: [not_null, unique]
 
   - name: dim_dates
-    description: "Conformed date dimension (Gold)."
+    description: "Conformed date dimension (Gold). Also the MetricFlow time spine."
+    # Declares this model as the time spine: MetricFlow uses it to handle
+    # time granularities and to fill gaps in time-based metric queries.
+    time_spine:
+      standard_granularity_column: date_day
     columns:
       - name: date_id
         data_tests: [not_null, unique]
       - name: date_day
+        granularity: day
         data_tests: [not_null, unique]
 
   - name: fact_sales

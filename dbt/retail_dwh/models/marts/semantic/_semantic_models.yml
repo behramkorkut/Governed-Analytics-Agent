@@ -1,0 +1,110 @@
+semantic_models:
+  # ---------------------------------------------------------------------
+  # SALES: the central fact. Its measures are the raw aggregation inputs.
+  # Entities let MetricFlow auto-join to the dimension semantic models
+  # below — nobody writes JOINs by hand (that is the safety guarantee).
+  # ---------------------------------------------------------------------
+  - name: sales
+    description: "Sales facts at order-line grain."
+    model: ref('fact_sales')
+    defaults:
+      agg_time_dimension: order_date
+    entities:
+      - name: sales            # primary key of this table
+        type: primary
+        expr: sales_id
+      - name: order            # degenerate, used to count distinct orders
+        type: foreign
+        expr: order_id
+      - name: customer         # FK -> customers semantic model
+        type: foreign
+        expr: customer_id
+      - name: product          # FK -> products semantic model
+        type: foreign
+        expr: product_id
+      - name: store            # FK -> stores semantic model
+        type: foreign
+        expr: store_id
+    dimensions:
+      - name: order_date
+        type: time
+        type_params:
+          time_granularity: day
+      - name: channel
+        type: categorical
+      - name: status
+        type: categorical
+    measures:
+      - name: revenue
+        description: "Quantity x price charged."
+        agg: sum
+        expr: revenue
+      - name: cost
+        agg: sum
+        expr: cost_amount
+      - name: gross_profit
+        agg: sum
+        expr: profit
+      - name: quantity_sold
+        agg: sum
+        expr: quantity
+      - name: discount
+        agg: sum
+        expr: discount_amount
+      - name: order_count
+        description: "Distinct orders."
+        agg: count_distinct
+        expr: order_id
+      - name: customer_count
+        description: "Distinct customers who purchased."
+        agg: count_distinct
+        expr: customer_id
+
+  # ---------------------------------------------------------------------
+  # DIMENSION semantic models: they expose attributes for grouping and,
+  # via their primary entity, the join path from the fact.
+  # ---------------------------------------------------------------------
+  - name: customers
+    description: "Customer dimension."
+    model: ref('dim_customers')
+    entities:
+      - name: customer
+        type: primary
+        expr: customer_id
+    dimensions:
+      - name: country
+        type: categorical
+      - name: city
+        type: categorical
+      - name: signup_date
+        type: time
+        type_params:
+          time_granularity: day
+
+  - name: products
+    description: "Product dimension."
+    model: ref('dim_products')
+    entities:
+      - name: product
+        type: primary
+        expr: product_id
+    dimensions:
+      - name: category
+        type: categorical
+      - name: product_name
+        type: categorical
+
+  - name: stores
+    description: "Store dimension."
+    model: ref('dim_stores')
+    entities:
+      - name: store
+        type: primary
+        expr: store_id
+    dimensions:
+      - name: store_country
+        type: categorical
+        expr: country
+      - name: store_city
+        type: categorical
+        expr: city
