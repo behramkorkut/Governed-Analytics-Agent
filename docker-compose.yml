@@ -1,0 +1,23 @@
+# One command to run everything:  docker compose up --build
+# Works the same whether the Docker engine is Docker Desktop or Colima.
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: governed-analytics-agent
+    container_name: governed-analytics-agent
+    ports:
+      - "8501:8501"
+    # Secrets (ANTHROPIC_API_KEY) are injected at runtime, never baked in.
+    env_file:
+      - .env
+    environment:
+      WAREHOUSE_DB: /app/data/warehouse.duckdb
+      DBT_PROFILES_DIR: /app/dbt/retail_dwh
+    # Persist the generated warehouse across container restarts.
+    volumes:
+      - warehouse:/app/data
+
+volumes:
+  warehouse:

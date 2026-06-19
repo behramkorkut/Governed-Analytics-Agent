@@ -1,0 +1,13 @@
+# Keep the build context small and never bake secrets/artifacts into the image.
+.git
+.venv
+.env
+data/
+**/target/
+**/dbt_packages/
+**/logs/
+**/.user.yml
+__pycache__/
+*.pyc
+.DS_Store
+.pytest_cache/
