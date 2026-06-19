@@ -132,7 +132,7 @@ else:
                          "order_by": res.query.order_by}
                     )
                     if res.rows:
-                        st.dataframe(pd.DataFrame(res.rows), use_container_width=True)
+                        st.dataframe(pd.DataFrame(res.rows), width="stretch")
                     if res.sql:
                         st.code(res.sql, language="sql")
         st.session_state.history.append({"role": "assistant", "content": res.answer})

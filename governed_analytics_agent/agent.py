@@ -19,7 +19,7 @@ import anthropic
 
 from .catalog import Catalog, load_catalog
 from .config import settings
-from .guardrails import GuardrailError, MetricQuery, validate
+from .guardrails import Filter, GuardrailError, MetricQuery, validate
 from . import semantic_layer as sl
 
 TOOL_NAME = "query_semantic_layer"
@@ -35,6 +35,10 @@ dimensions from the catalog below.
 
 Rules:
 - Map the user's intent to the closest metric(s) and grouping dimension(s).
+- To restrict to a specific period or segment (e.g. "in May 2026", "for
+  France", "completed orders only"), use `filters` — do NOT fetch every period
+  and filter in your head. For a single month: dimension=metric_time,
+  grain=month, value='2026-05-01' (first day of that month).
 - If the question implies a time series, group by metric_time with a grain
   (metric_time__month, metric_time__quarter, metric_time__year).
 - If the question cannot be answered with the available metrics/dimensions,
@@ -105,6 +109,36 @@ def build_tool(catalog: Catalog) -> dict:
                     "items": {"type": "string"},
                     "description": "Selected metric/dimension names; prefix '-' for descending.",
                 },
+                "filters": {
+                    "type": "array",
+                    "description": (
+                        "Governed filters to restrict the result (preferred over "
+                        "fetching everything and filtering mentally). E.g. one month, "
+                        "one country, or completed orders only."
+                    ),
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "dimension": {
+                                "type": "string",
+                                "description": "A dimension from the catalog (e.g. customer__country, sales__status, metric_time).",
+                            },
+                            "operator": {
+                                "type": "string",
+                                "enum": ["=", "!=", ">", ">=", "<", "<=", "in"],
+                            },
+                            "value": {
+                                "description": "String/number, or a list for 'in'. For time dims use 'YYYY-MM-DD' (first day of the period).",
+                            },
+                            "grain": {
+                                "type": "string",
+                                "enum": ["day", "week", "month", "quarter", "year"],
+                                "description": "Required for time dimensions, e.g. month for a specific month.",
+                            },
+                        },
+                        "required": ["dimension", "operator", "value"],
+                    },
+                },
                 "limit": {"type": "integer", "description": "Max rows (<=1000)."},
             },
             "required": ["metrics"],
@@ -113,10 +147,20 @@ def build_tool(catalog: Catalog) -> dict:
 
 
 def _tool_input_to_query(data: dict) -> MetricQuery:
+    filters = [
+        Filter(
+            dimension=f["dimension"],
+            operator=f["operator"],
+            value=f["value"],
+            grain=f.get("grain"),
+        )
+        for f in (data.get("filters") or [])
+    ]
     return MetricQuery(
         metrics=list(data.get("metrics", [])),
         group_by=list(data.get("group_by", []) or []),
         order_by=list(data.get("order_by", []) or []),
+        filters=filters,
         limit=data.get("limit"),
     )
 

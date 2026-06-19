@@ -11,14 +11,46 @@ import csv
 import os
 import subprocess
 import tempfile
+from functools import lru_cache
 from pathlib import Path
 
+from .catalog import load_catalog
 from .config import settings
-from .guardrails import MetricQuery
+from .guardrails import Filter, MetricQuery
 
 
 class SemanticLayerError(RuntimeError):
     pass
+
+
+def _quote(v: object) -> str:
+    """Quote a scalar value, escaping single quotes (defence vs injection)."""
+    return "'" + str(v).replace("'", "''") + "'"
+
+
+def _compile_condition(f: Filter, time_dimensions: set[str]) -> str:
+    """Compile one structured filter into a MetricFlow where-expression.
+
+    Categorical -> {{ Dimension('dim') }} op value
+    Time        -> {{ TimeDimension('dim', 'grain') }} op value
+    No raw SQL is ever taken from the model: only validated names/operators.
+    """
+    if f.dimension in time_dimensions:
+        ref = f"{{{{ TimeDimension('{f.dimension}', '{f.grain or 'day'}') }}}}"
+    else:
+        ref = f"{{{{ Dimension('{f.dimension}') }}}}"
+
+    if f.operator == "in":
+        values = f.value if isinstance(f.value, list) else [f.value]
+        rendered = "(" + ", ".join(_quote(v) for v in values) + ")"
+        return f"{ref} IN {rendered}"
+    return f"{ref} {f.operator} {_quote(f.value)}"
+
+
+def compile_where(query: MetricQuery, time_dimensions: set[str]) -> str | None:
+    if not query.filters:
+        return None
+    return " AND ".join(_compile_condition(f, time_dimensions) for f in query.filters)
 
 
 def _base_cmd() -> list[str]:
@@ -38,10 +70,18 @@ def _run_mf(args: list[str], extra_env: dict[str, str] | None = None) -> subproc
     )
 
 
+@lru_cache(maxsize=1)
+def _time_dimensions() -> frozenset[str]:
+    return frozenset(load_catalog().time_dimensions)
+
+
 def _query_args(q: MetricQuery) -> list[str]:
     args = ["query", "--metrics", ",".join(q.metrics)]
     if q.group_by:
         args += ["--group-by", ",".join(q.group_by)]
+    where = compile_where(q, set(_time_dimensions()))
+    if where:
+        args += ["--where", where]
     if q.order_by:
         args += ["--order", ",".join(q.order_by)]
     if q.limit:

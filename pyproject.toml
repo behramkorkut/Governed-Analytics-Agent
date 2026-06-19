@@ -14,3 +14,13 @@ dependencies = [
     "pydantic-settings>=2.14.2",
     "streamlit>=1.58.0",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"

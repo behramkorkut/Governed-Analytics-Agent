@@ -18,6 +18,14 @@ services:
     # Persist the generated warehouse across container restarts.
     volumes:
       - warehouse:/app/data
+    # Explicit, named network (instead of the implicit default) — clearer
+    # topology and ready for future services (Postgres, a Snowflake proxy…).
+    networks:
+      - gaa-net
 
 volumes:
   warehouse:
+
+networks:
+  gaa-net:
+    driver: bridge

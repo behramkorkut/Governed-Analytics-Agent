@@ -26,6 +26,7 @@ class Metric:
 class Catalog:
     metrics: dict[str, Metric] = field(default_factory=dict)
     dimensions: list[str] = field(default_factory=list)
+    time_dimensions: set[str] = field(default_factory=set)
 
     @property
     def metric_names(self) -> list[str]:
@@ -75,11 +76,15 @@ def load_catalog(manifest_path: Path | None = None) -> Catalog:
     # Build qualified dimension names exactly like MetricFlow does:
     #   <primary_entity>__<dimension>  (+ the special metric_time)
     dims: set[str] = {"metric_time"}
+    time_dims: set[str] = {"metric_time"}
     for sm in manifest.get("semantic_models", []):
         prefix = _primary_entity(sm)
         if not prefix:
             continue
         for d in sm.get("dimensions", []):
-            dims.add(f"{prefix}__{d['name']}")
+            qualified = f"{prefix}__{d['name']}"
+            dims.add(qualified)
+            if d.get("type") == "time":
+                time_dims.add(qualified)
 
-    return Catalog(metrics=metrics, dimensions=sorted(dims))
+    return Catalog(metrics=metrics, dimensions=sorted(dims), time_dimensions=time_dims)
