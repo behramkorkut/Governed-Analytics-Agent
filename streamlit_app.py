@@ -125,18 +125,49 @@ else:
         with st.chat_message("assistant"):
             with st.spinner("Querying the governed semantic layer…"):
                 res = get_agent().run(prompt)
+
+            # 📖 Reading — the LLM's interpretation. Fallible commentary, kept
+            # visually separate from the authoritative figures below.
+            st.markdown("**📖 Lecture** _(interprétation du modèle)_")
             st.markdown(res.answer)
+
             if res.query:
-                with st.expander("How this was computed (transparency)"):
-                    st.write(
-                        {
-                            "metrics": res.query.metrics,
-                            "group_by": res.query.group_by,
-                            "order_by": res.query.order_by,
-                        }
+                ins = res.insights
+                if ins and ins.partial_latest:
+                    st.warning(
+                        "⚠️ La dernière période est **partielle** (données "
+                        "incomplètes) — ne pas l'interpréter comme une baisse."
                     )
+
+                # 🔢 Figures — deterministic and auditable: same source of truth
+                # as the KPIs above, computed in code, never by the LLM.
+                with st.container(border=True):
+                    st.markdown("**🔢 Chiffres** _(déterministe, auditable)_")
+                    if ins and ins.delta:
+                        d = ins.delta
+                        delta = f"{d['abs']:+,.0f}"
+                        if d["pct"] is not None:
+                            delta += f" ({d['pct']:+}%)"
+                        st.metric(
+                            f"{ins.metric} — {d['latest']}", f"{d['latest_value']:,.0f}", delta
+                        )
                     if res.rows:
                         st.dataframe(pd.DataFrame(res.rows), width="stretch")
-                    if res.sql:
-                        st.code(res.sql, language="sql")
+                    with st.expander("Métriques, dimensions & SQL généré"):
+                        st.write(
+                            {
+                                "metrics": res.query.metrics,
+                                "group_by": res.query.group_by,
+                                "order_by": res.query.order_by,
+                            }
+                        )
+                        if res.sql:
+                            st.code(res.sql, language="sql")
+
+                cost = res.cost_usd
+                cost_txt = f"${cost:.4f}" if cost is not None else "n/a"
+                st.caption(
+                    f"⏱ {res.latency_s:.1f}s · {res.usage.total_tokens:,} tokens · "
+                    f"{cost_txt} · {res.model}"
+                )
         st.session_state.history.append({"role": "assistant", "content": res.answer})

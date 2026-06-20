@@ -18,6 +18,9 @@ def _print_result(res) -> None:
         print(f"  metrics : {res.query.metrics}")
         print(f"  group_by: {res.query.group_by}")
         print(f"  rows    : {len(res.rows)}")
+    cost = res.cost_usd
+    cost_txt = f"${cost:.4f}" if cost is not None else "n/a"
+    print(f"  cost    : {res.latency_s:.1f}s · {res.usage.total_tokens:,} tokens · {cost_txt}")
 
 
 def main() -> None:

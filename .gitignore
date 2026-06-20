@@ -25,3 +25,6 @@ logs/
 
 # Private worklog (keep the rest of docs/ tracked — e.g. snowflake-deployment.md)
 docs/journaldebord.md
+
+# Generated eval results
+eval/last_run.json

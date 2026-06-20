@@ -13,16 +13,19 @@ arguments are validated before anything runs.
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass, field
 from typing import cast
 
 import anthropic
 from anthropic.types import MessageParam, ToolParam
 
+from . import insights as ins
 from . import semantic_layer as sl
 from .catalog import Catalog, load_catalog
 from .config import settings
 from .guardrails import Filter, GuardrailError, MetricQuery, validate
+from .pricing import Usage
 
 TOOL_NAME = "query_semantic_layer"
 MAX_STEPS = 6
@@ -60,8 +63,11 @@ ANALYTICAL RIGOR (the figures are authoritative; your commentary must be honest)
   completed orders) so the reader knows what the number represents.
 - Never compare against a period, segment or benchmark you did not actually
   query. If a comparison is needed, call the tool again to get it.
-- For shares and percentages, get the total from the tool and compute exactly;
-  do not eyeball "about X%".
+- USE THE DETERMINISTIC FACTS. When the tool result contains a
+  `precomputed_insights` block, those shares, deltas, rankings and coverage
+  notes were computed in code and are exact — cite them verbatim. Never
+  re-estimate a percentage or a change "by eye"; if a figure you need is not in
+  that block, it is fine to call the tool again rather than guess.
 - If the request is ambiguous (time range, status filter, grain), state the
   assumption you are making, or ask one short clarifying question.
 
@@ -78,6 +84,17 @@ class AgentResult:
     rows: list[dict] = field(default_factory=list)
     sql: str = ""
     steps: list[str] = field(default_factory=list)
+    # Deterministic facts computed from the rows (shares, deltas, coverage),
+    # so the model phrases pre-computed numbers instead of estimating them.
+    insights: ins.Insights | None = None
+    # Observability: what the run cost and how long it took.
+    usage: Usage = field(default_factory=Usage)
+    model: str = ""
+    latency_s: float = 0.0
+
+    @property
+    def cost_usd(self) -> float | None:
+        return self.usage.cost_usd(self.model)
 
 
 def build_tool(catalog: Catalog) -> dict:
@@ -191,7 +208,8 @@ class GovernedAnalyticsAgent:
 
     def run(self, question: str) -> AgentResult:
         messages: list[dict] = [{"role": "user", "content": question}]
-        result = AgentResult(answer="")
+        result = AgentResult(answer="", model=settings.anthropic_model)
+        started = time.perf_counter()
 
         for _ in range(MAX_STEPS):
             resp = self.client.messages.create(
@@ -205,10 +223,11 @@ class GovernedAnalyticsAgent:
                 tools=cast("list[ToolParam]", [self.tool]),
                 messages=cast("list[MessageParam]", messages),
             )
+            result.usage.add(getattr(resp, "usage", None))
 
             if resp.stop_reason != "tool_use":
                 result.answer = "".join(b.text for b in resp.content if b.type == "text").strip()
-                return self._finalize(result)
+                return self._finalize(result, started)
 
             # Echo the assistant turn (required before sending tool_result).
             messages.append({"role": "assistant", "content": resp.content})
@@ -228,9 +247,9 @@ class GovernedAnalyticsAgent:
             messages.append({"role": "user", "content": tool_results})
 
         result.answer = "Stopped after too many steps without a final answer."
-        return self._finalize(result)
+        return self._finalize(result, started)
 
-    def _finalize(self, result: AgentResult) -> AgentResult:
+    def _finalize(self, result: AgentResult, started: float) -> AgentResult:
         """Compute the transparency SQL once, for the final query only.
 
         Kept out of the per-step hot path: the agent may issue several tool
@@ -241,6 +260,7 @@ class GovernedAnalyticsAgent:
                 result.sql = sl.explain_sql(result.query)
             except Exception:  # noqa: BLE001 — transparency is best-effort, never fatal
                 result.sql = ""
+        result.latency_s = round(time.perf_counter() - started, 3)
         return result
 
     def _execute_tool(self, data: dict, result: AgentResult) -> tuple[str, bool]:
@@ -262,11 +282,17 @@ class GovernedAnalyticsAgent:
         result.query = query
         result.rows = rows
         result.sql = ""
+        result.insights = ins.compute(rows, query)
         result.steps.append(
             f"OK metrics={query.metrics} group_by={query.group_by} -> {len(rows)} rows"
         )
-        payload = rows[:MAX_ROWS_TO_MODEL]
-        return json.dumps({"row_count": len(rows), "rows": payload}), False
+        payload: dict = {"row_count": len(rows), "rows": rows[:MAX_ROWS_TO_MODEL]}
+        # Hand the model deterministic, code-computed facts (shares, deltas,
+        # data coverage) so it phrases them verbatim instead of estimating.
+        summary = ins.summarize(result.insights)
+        if summary:
+            payload["precomputed_insights"] = summary
+        return json.dumps(payload), False
 
 
 def ask(question: str) -> AgentResult:

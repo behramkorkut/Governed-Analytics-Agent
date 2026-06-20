@@ -185,15 +185,19 @@ governed-analytics-agent/
 │   ├── catalog.py              # allow-list, derived from the semantic manifest
 │   ├── guardrails.py           # validation (metrics, dims, filters, bounds)
 │   ├── semantic_layer.py       # MetricFlow client + safe filter compilation
-│   ├── agent.py                # Claude tool-use loop
+│   ├── agent.py                # Claude tool-use loop (tracing + insights wired in)
+│   ├── insights.py             # deterministic facts: shares, deltas, coverage
+│   ├── pricing.py              # token accounting + cost (USD)
+│   ├── evaluation.py           # routing-accuracy scorer (pure, tested)
 │   ├── reporting.py            # governed metrics -> DataFrames (for the BI)
 │   └── cli.py
+├── eval/                       # routing-accuracy suite: labelled cases + runner
 ├── dbt/retail_dwh/             # dbt project
 │   └── models/
 │       ├── staging/            # Silver (cleaning / conforming)
 │       └── marts/              # Gold (star schema) + semantic/ (MetricFlow)
 ├── scripts/                    # generate synthetic data, load Bronze
-├── streamlit_app.py            # dashboard + governed chat
+├── streamlit_app.py            # dashboard + governed chat (Figures / Reading split)
 ├── tests/                      # pytest (unit + integration)
 ├── docker/                     # Dockerfile + entrypoint
 ├── docker-compose.yml
@@ -244,28 +248,42 @@ ever reaches GitHub.
 ## The LLM narrative layer: safeguards & roadmap
 
 The **figures are deterministic and authoritative** (that is the entire point of
-the semantic layer). The remaining risk is the LLM's *commentary*. Current
-safeguards:
+the semantic layer). The remaining risk is the LLM's *commentary*. Safeguards
+**now in place**:
 
-- An **analytical-rigor system prompt**: separate facts from interpretation,
-  don't over-claim correlation/causation from few points, flag partial periods,
-  state filter assumptions, never compare against a period it didn't query.
-- A **transparency panel** exposing the metric, the rows and the SQL behind every
-  answer, so a decision-maker can audit it.
+- **Deterministic pre-computed insights.** Shares of total, period-over-period
+  deltas and rankings are computed *in code* ([`insights.py`](governed_analytics_agent/insights.py))
+  and handed to the model to phrase. The LLM writes the sentence; it never does
+  the arithmetic — which removes the "~X%" class of hallucination outright.
+- **Coverage metadata.** The latest date with data is queried once and used to
+  flag **partial periods** automatically, so an incomplete final month is never
+  reported as a "decline".
+- **Figures-vs-Reading UI split.** The dashboard separates **📖 Lecture** (the
+  LLM's fallible interpretation) from **🔢 Chiffres** (the deterministic,
+  auditable numbers + the exact SQL) — a decision-maker sees, at a glance, which
+  is which.
+- **Deterministic routing** (`temperature=0`) + an **analytical-rigor system
+  prompt**: separate facts from interpretation, don't over-claim from few points,
+  state filter assumptions, never compare against an un-queried period.
+- **Observability.** Every answer reports its **token usage, cost (USD) and
+  latency** ([`pricing.py`](governed_analytics_agent/pricing.py)) — an LLM
+  product that can't tell you what it spent isn't a serious one.
 
-Planned improvements (not yet implemented), to harden the narrative:
+### Measuring routing accuracy (the eval harness)
 
-- **Deterministic pre-computed insights** (shares of total, deltas, MoM/YoY,
-  rankings) computed in code and handed to the LLM to phrase — removes "~X%"
-  estimates.
-- **Coverage metadata** (max date, period completeness, row counts) injected as
-  context, so partial periods are flagged automatically.
-- **A critic / verification pass** (LLM-as-judge or rules) that rejects any claim
-  not backed by a query, plus an anti-fabrication check that every cited number
-  appears in the returned rows.
-- **UI separation** of "Figures" (deterministic) vs "Reading" (LLM); low decoding
-  temperature; and an **evaluation harness** (NL question → expected metric
-  selection) to measure routing accuracy and narrative rigor objectively.
+"How do you know the agent picks the *right* metric?" is answered with a
+labelled **evaluation suite** ([`eval/`](eval/)): a set of NL questions, each
+paired with the metric selection a correct agent should make. `make eval` runs
+them through the live agent and reports a routing-accuracy score; the **scoring
+logic is pure and unit-tested** so the suite itself is trustworthy.
+
+```bash
+make eval        # NL question → expected metric selection, scored against the live agent
+```
+
+Still on the roadmap: a **critic / verification pass** (LLM-as-judge or rules)
+that rejects any claim not backed by a query, plus an anti-fabrication check that
+every cited number appears in the returned rows.
 
 ---
 
