@@ -108,3 +108,30 @@ semantic_models:
       - name: store_city
         type: categorical
         expr: city
+
+  # ---------------------------------------------------------------------
+  # CUSTOMER ORDERS: a customer-grain summary fact. Shares the `customer`
+  # entity with the customers dimension above, so MetricFlow joins them
+  # automatically. Its measure + flag power the loyalty (repeat-rate) metrics.
+  # ---------------------------------------------------------------------
+  - name: customer_orders
+    description: "Per-customer order summary — basis for loyalty metrics."
+    model: ref('fact_customer_orders')
+    defaults:
+      agg_time_dimension: last_order_date
+    entities:
+      - name: customer
+        type: primary
+        expr: customer_id
+    dimensions:
+      - name: is_repeat_customer
+        type: categorical
+      - name: last_order_date
+        type: time
+        type_params:
+          time_granularity: day
+    measures:
+      - name: purchasing_customer_count
+        description: "Distinct customers who placed at least one order."
+        agg: count_distinct
+        expr: customer_id

@@ -84,3 +84,27 @@ models:
           - accepted_values:
               arguments:
                 values: ["completed", "returned", "cancelled"]
+
+  - name: fact_customer_orders
+    description: "Customer-loyalty summary fact (Gold). Grain = one purchasing customer."
+    columns:
+      - name: customer_id
+        description: "PK; FK -> dim_customers."
+        data_tests:
+          - not_null
+          - unique
+          - relationships:
+              arguments:
+                to: ref('dim_customers')
+                field: customer_id
+      - name: order_count
+        description: "Distinct orders the customer has placed (always >= 1 here)."
+        data_tests: [not_null]
+      - name: is_repeat_customer
+        description: "True when the customer ordered on more than one occasion."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [true, false]
+                quote: false

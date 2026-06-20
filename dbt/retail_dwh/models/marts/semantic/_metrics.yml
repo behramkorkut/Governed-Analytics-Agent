@@ -93,3 +93,27 @@ metrics:
       metrics:
         - name: returned_orders
         - name: orders
+
+  # --- Customer loyalty: repeat-purchase behaviour ----------------------
+  - name: purchasing_customers
+    description: "Customers who have placed at least one order (loyalty denominator)."
+    label: "Purchasing customers"
+    type: simple
+    type_params:
+      measure: purchasing_customer_count
+
+  - name: repeat_customers
+    description: "Customers who ordered on more than one occasion."
+    label: "Repeat customers"
+    type: simple
+    type_params:
+      measure: purchasing_customer_count
+    filter: "{{ Dimension('customer__is_repeat_customer') }} = true"
+
+  - name: repeat_customer_rate
+    description: "Share of purchasing customers who ordered more than once (0-1)."
+    label: "Repeat customer rate"
+    type: ratio
+    type_params:
+      numerator: repeat_customers
+      denominator: purchasing_customers

@@ -25,4 +25,5 @@ CASES: list[EvalCase] = [
         ["product__category"],
     ),
     EvalCase("Combien de commandes par canal de vente ?", ["orders"], ["sales__channel"]),
+    EvalCase("What share of customers are repeat buyers?", ["repeat_customer_rate"]),
 ]

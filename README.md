@@ -91,7 +91,7 @@ flowchart LR
     SRC["Synthetic source extracts<br/>(CSV landing zone)"] --> BRONZE[("Bronze<br/>raw, untouched")]
     BRONZE --> SILVER[("Silver<br/>cleaned / conformed")]
     SILVER --> GOLD[("Gold<br/>star schema")]
-    GOLD --> SEM["Semantic layer<br/>dbt + MetricFlow<br/>12 governed metrics"]
+    GOLD --> SEM["Semantic layer<br/>dbt + MetricFlow<br/>15 governed metrics"]
     SEM --> DASH["Streamlit dashboard<br/>KPIs + charts"]
     SEM --> AGENT["Governed LLM agent<br/>Claude tool-use"]
     USER(["Business question"]) --> AGENT
@@ -139,9 +139,20 @@ MetricFlow turns the Gold star schema into a governed model:
   `AOV = revenue / orders`), *derived* (`return_rate`), and *filtered* (e.g.
   `completed_revenue`).
 
-The **12 governed metrics**: `revenue`, `cost`, `gross_profit`,
+The **15 governed metrics**: `revenue`, `cost`, `gross_profit`,
 `quantity_sold`, `discount`, `orders`, `active_customers`, `completed_revenue`,
-`returned_orders`, `gross_margin_rate`, `average_order_value`, `return_rate`.
+`returned_orders`, `gross_margin_rate`, `average_order_value`, `return_rate`,
+`purchasing_customers`, `repeat_customers`, `repeat_customer_rate`.
+
+> **Extending the layer — a worked example.** `repeat_customer_rate` (customer
+> loyalty) was added the way a data engineer serves an analyst's request: a new
+> Gold summary fact at customer grain
+> ([`fact_customer_orders`](dbt/retail_dwh/models/marts/facts/fact_customer_orders.sql)),
+> a semantic model with a `count_distinct` measure + an `is_repeat_customer`
+> flag, then three metrics (a `filter`ed `repeat_customers` over the same measure
+> as `purchasing_customers`, and their `ratio`). One question — *"what share of
+> customers buy more than once?"* — turned into a governed, deterministic metric
+> the agent can now route to.
 
 ---
 
@@ -254,7 +265,7 @@ The Gold layer is a Kimball **star schema**: a `fact_sales` table at order-line
 grain (additive measures: revenue, cost, profit, quantity, discount) surrounded
 by conformed dimensions `dim_customers`, `dim_products`, `dim_stores` and a
 `dim_dates` spine (which also serves as the MetricFlow time spine). Data quality
-is enforced by **41 dbt tests**, including referential integrity from every fact
+is enforced by **47 dbt tests**, including referential integrity from every fact
 row to its dimensions.
 
 The source data is **synthetic and deterministic** (seeded), and deliberately
