@@ -51,13 +51,13 @@ COUNTRY_VARIANTS = {
 COUNTRIES = list(COUNTRY_VARIANTS)
 
 CATEGORIES = {
-    "Electronics": (40.0, 900.0, 0.35),   # (min cost, max cost, target margin)
+    "Electronics": (40.0, 900.0, 0.35),  # (min cost, max cost, target margin)
     "Clothing": (5.0, 120.0, 0.55),
     "Home": (8.0, 300.0, 0.45),
     "Sports": (10.0, 400.0, 0.40),
 }
 
-CHANNELS = (["online"] * 6) + (["in_store"] * 4)          # ~60% online
+CHANNELS = (["online"] * 6) + (["in_store"] * 4)  # ~60% online
 STATUSES = (["completed"] * 82) + (["returned"] * 10) + (["cancelled"] * 8)
 
 RAW_DIR = Path(__file__).resolve().parents[1] / "data" / "raw"
@@ -92,14 +92,24 @@ def main() -> None:
         first = fake.first_name()
         last = fake.last_name()
         # mixed-case email + occasional stray whitespace on the name
-        email = f"{first}.{last}@{fake.free_email_domain()}".upper() if cid % 7 == 0 \
+        email = (
+            f"{first}.{last}@{fake.free_email_domain()}".upper()
+            if cid % 7 == 0
             else f"{first.lower()}.{last.lower()}@{fake.free_email_domain()}"
+        )
         name_display = f" {first}" if cid % 11 == 0 else first  # leading space sometimes
-        city = None if cid % 23 == 0 else fake.city()           # a few NULL cities
-        customers.append([
-            cid, name_display, last, email, messy_country(), city,
-            random_date(START_DATE, END_DATE).isoformat(),
-        ])
+        city = None if cid % 23 == 0 else fake.city()  # a few NULL cities
+        customers.append(
+            [
+                cid,
+                name_display,
+                last,
+                email,
+                messy_country(),
+                city,
+                random_date(START_DATE, END_DATE).isoformat(),
+            ]
+        )
     write_csv(
         "customers",
         ["customer_id", "first_name", "last_name", "email", "country", "city", "signup_date"],
@@ -113,10 +123,15 @@ def main() -> None:
         cmin, cmax, margin = CATEGORIES[category]
         unit_cost = round(random.uniform(cmin, cmax), 2)
         list_price = round(unit_cost * (1 + margin + random.uniform(-0.05, 0.10)), 2)
-        products.append([
-            pid, f"{category[:3].upper()}-{fake.word().capitalize()}-{pid:03d}",
-            category, unit_cost, list_price,
-        ])
+        products.append(
+            [
+                pid,
+                f"{category[:3].upper()}-{fake.word().capitalize()}-{pid:03d}",
+                category,
+                unit_cost,
+                list_price,
+            ]
+        )
     write_csv(
         "products",
         ["product_id", "product_name", "category", "unit_cost", "list_price"],

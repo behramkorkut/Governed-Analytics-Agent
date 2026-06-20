@@ -18,9 +18,37 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
+    "pytest-cov>=5.0",
+    "ruff>=0.9",
+    "mypy>=1.13",
+    "pre-commit>=4.0",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+# A focused, high-signal rule set: pyflakes/pycodestyle, import sorting,
+# pyupgrade, bugbear, comprehensions, simplify, and ruff's own checks.
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "BLE", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests intentionally reach into private helpers and use terse fixtures.
+"tests/*" = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+files = ["governed_analytics_agent"]
+# Third-party libs (anthropic, pandas, duckdb, dbt, metricflow) ship without
+# complete stubs; we check our own code, not theirs.
+ignore_missing_imports = true
+check_untyped_defs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+no_implicit_optional = true

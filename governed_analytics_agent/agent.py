@@ -14,13 +14,15 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from typing import cast
 
 import anthropic
+from anthropic.types import MessageParam, ToolParam
 
+from . import semantic_layer as sl
 from .catalog import Catalog, load_catalog
 from .config import settings
 from .guardrails import Filter, GuardrailError, MetricQuery, validate
-from . import semantic_layer as sl
 
 TOOL_NAME = "query_semantic_layer"
 MAX_STEPS = 6
@@ -121,19 +123,27 @@ def build_tool(catalog: Catalog) -> dict:
                         "properties": {
                             "dimension": {
                                 "type": "string",
-                                "description": "A dimension from the catalog (e.g. customer__country, sales__status, metric_time).",
+                                "description": (
+                                    "A dimension from the catalog (e.g. "
+                                    "customer__country, sales__status, metric_time)."
+                                ),
                             },
                             "operator": {
                                 "type": "string",
                                 "enum": ["=", "!=", ">", ">=", "<", "<=", "in"],
                             },
                             "value": {
-                                "description": "String/number, or a list for 'in'. For time dims use 'YYYY-MM-DD' (first day of the period).",
+                                "description": (
+                                    "String/number, or a list for 'in'. For time "
+                                    "dims use 'YYYY-MM-DD' (first day of the period)."
+                                ),
                             },
                             "grain": {
                                 "type": "string",
                                 "enum": ["day", "week", "month", "quarter", "year"],
-                                "description": "Required for time dimensions, e.g. month for a specific month.",
+                                "description": (
+                                    "Required for time dimensions, e.g. month for a specific month."
+                                ),
                             },
                         },
                         "required": ["dimension", "operator", "value"],
@@ -173,9 +183,7 @@ class GovernedAnalyticsAgent:
             self.client = client
         else:
             if not settings.anthropic_api_key:
-                raise RuntimeError(
-                    "ANTHROPIC_API_KEY is not set. Add it to your .env file."
-                )
+                raise RuntimeError("ANTHROPIC_API_KEY is not set. Add it to your .env file.")
             self.client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
     def _system(self) -> str:
@@ -189,16 +197,18 @@ class GovernedAnalyticsAgent:
             resp = self.client.messages.create(
                 model=settings.anthropic_model,
                 max_tokens=1024,
+                temperature=0,  # deterministic metric routing — governed, repeatable answers
                 system=self._system(),
-                tools=[self.tool],
-                messages=messages,
+                # The tool schema and message log are built as plain dicts (the
+                # metric enum is assembled at runtime); they satisfy the SDK's
+                # TypedDicts at runtime, so we narrow the type at the boundary.
+                tools=cast("list[ToolParam]", [self.tool]),
+                messages=cast("list[MessageParam]", messages),
             )
 
             if resp.stop_reason != "tool_use":
-                result.answer = "".join(
-                    b.text for b in resp.content if b.type == "text"
-                ).strip()
-                return result
+                result.answer = "".join(b.text for b in resp.content if b.type == "text").strip()
+                return self._finalize(result)
 
             # Echo the assistant turn (required before sending tool_result).
             messages.append({"role": "assistant", "content": resp.content})
@@ -207,15 +217,30 @@ class GovernedAnalyticsAgent:
                 if block.type != "tool_use" or block.name != TOOL_NAME:
                     continue
                 content, is_error = self._execute_tool(block.input, result)
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": block.id,
-                    "content": content,
-                    "is_error": is_error,
-                })
+                tool_results.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": content,
+                        "is_error": is_error,
+                    }
+                )
             messages.append({"role": "user", "content": tool_results})
 
         result.answer = "Stopped after too many steps without a final answer."
+        return self._finalize(result)
+
+    def _finalize(self, result: AgentResult) -> AgentResult:
+        """Compute the transparency SQL once, for the final query only.
+
+        Kept out of the per-step hot path: the agent may issue several tool
+        calls per question, but we only ever need the SQL for the last one.
+        """
+        if result.query is not None and not result.sql:
+            try:
+                result.sql = sl.explain_sql(result.query)
+            except Exception:  # noqa: BLE001 — transparency is best-effort, never fatal
+                result.sql = ""
         return result
 
     def _execute_tool(self, data: dict, result: AgentResult) -> tuple[str, bool]:
@@ -233,12 +258,10 @@ class GovernedAnalyticsAgent:
             return f"Execution error: {e}", True
 
         # Remember the last successful query for the UI / transparency.
+        # The SQL is resolved once at the end (see _finalize), not per step.
         result.query = query
         result.rows = rows
-        try:
-            result.sql = sl.explain_sql(query)
-        except Exception:
-            result.sql = ""
+        result.sql = ""
         result.steps.append(
             f"OK metrics={query.metrics} group_by={query.group_by} -> {len(rows)} rows"
         )

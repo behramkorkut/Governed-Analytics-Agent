@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Lint & type-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Ruff lint
+        run: uv run ruff check .
+
+      - name: Ruff format check
+        run: uv run ruff format --check .
+
+      - name: Mypy
+        run: uv run mypy
+
+  test:
+    name: Build warehouse & test
+    runs-on: ubuntu-latest
+    env:
+      # Absolute paths so MetricFlow + dbt resolve the same DuckDB file.
+      WAREHOUSE_DB: ${{ github.workspace }}/data/warehouse.duckdb
+      DBT_PROFILES_DIR: ${{ github.workspace }}/dbt/retail_dwh
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Generate synthetic data + load Bronze
+        run: |
+          uv run python scripts/generate_raw_data.py
+          uv run python scripts/load_bronze.py
+
+      - name: dbt build (Silver + Gold + data tests)
+        run: uv run dbt build --project-dir dbt/retail_dwh --profiles-dir dbt/retail_dwh
+
+      - name: dbt parse (semantic manifest)
+        run: uv run dbt parse --project-dir dbt/retail_dwh --profiles-dir dbt/retail_dwh
+
+      - name: Pytest (unit + integration, no API key needed — LLM is mocked)
+        run: uv run pytest

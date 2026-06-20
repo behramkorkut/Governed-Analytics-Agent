@@ -8,7 +8,8 @@ export DBT_PROFILES_DIR := $(ROOT)/dbt/retail_dwh
 DBT  := uv run dbt
 PROJ := --project-dir dbt/retail_dwh --profiles-dir dbt/retail_dwh
 
-.PHONY: help setup data build parse warehouse run agent test docker-up docker-down clean
+.PHONY: help setup data build parse warehouse run agent test \
+        format lint typecheck check hooks docker-up docker-down clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -37,6 +38,22 @@ agent: ## Ask the agent, e.g. make agent Q="revenue by category in May 2026"
 
 test: ## Run the pytest suite
 	uv run pytest
+
+format: ## Auto-format + autofix lint issues (ruff)
+	uv run ruff check --fix .
+	uv run ruff format .
+
+lint: ## Lint + format check, read-only (what CI runs)
+	uv run ruff check .
+	uv run ruff format --check .
+
+typecheck: ## Static type-check with mypy
+	uv run mypy
+
+check: lint typecheck test ## All quality gates: lint + types + tests
+
+hooks: ## Install the pre-commit git hooks
+	uv run pre-commit install
 
 docker-up: ## Build + run everything in Docker (Colima)
 	docker compose up --build

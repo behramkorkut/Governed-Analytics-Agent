@@ -35,6 +35,7 @@ def _dimension_allowed(dim: str, allowed: set[str]) -> bool:
 @dataclass
 class Filter:
     """A single governed filter condition (never raw SQL)."""
+
     dimension: str
     operator: str
     value: object
@@ -58,8 +59,7 @@ def validate(query: MetricQuery, catalog: Catalog) -> MetricQuery:
     unknown_metrics = [m for m in query.metrics if m not in catalog.metrics]
     if unknown_metrics:
         raise GuardrailError(
-            f"Unknown metric(s): {unknown_metrics}. "
-            f"Allowed: {catalog.metric_names}"
+            f"Unknown metric(s): {unknown_metrics}. Allowed: {catalog.metric_names}"
         )
 
     allowed_dims = set(catalog.dimensions)
@@ -98,9 +98,7 @@ def _validate_filter(f: Filter, catalog: Catalog, allowed_dims: set[str]) -> Non
             f"Filter on unknown dimension '{f.dimension}'. Allowed: {catalog.dimensions}"
         )
     if f.operator not in OPERATORS:
-        raise GuardrailError(
-            f"Unsupported operator '{f.operator}'. Allowed: {sorted(OPERATORS)}"
-        )
+        raise GuardrailError(f"Unsupported operator '{f.operator}'. Allowed: {sorted(OPERATORS)}")
 
     values = f.value if isinstance(f.value, list) else [f.value]
     if not values:
@@ -111,9 +109,7 @@ def _validate_filter(f: Filter, catalog: Catalog, allowed_dims: set[str]) -> Non
             raise GuardrailError(f"Invalid time grain '{f.grain}'.")
         for v in values:
             if not DATE_RE.match(str(v)):
-                raise GuardrailError(
-                    f"Time filter value must be 'YYYY-MM-DD', got '{v}'."
-                )
+                raise GuardrailError(f"Time filter value must be 'YYYY-MM-DD', got '{v}'.")
     else:
         for v in values:
             if not isinstance(v, (str, int, float)) or isinstance(v, bool):

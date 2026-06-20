@@ -1,5 +1,6 @@
 # Governed Analytics Agent
 
+[![CI](https://github.com/behramkorkut/Governed-Analytics-Agent/actions/workflows/ci.yml/badge.svg)](https://github.com/behramkorkut/Governed-Analytics-Agent/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
 ![uv](https://img.shields.io/badge/packaging-uv-DE5FE9?logo=astral&logoColor=white)
 ![dbt](https://img.shields.io/badge/dbt-1.11-FF694B?logo=dbt&logoColor=white)
@@ -8,8 +9,9 @@
 ![Claude](https://img.shields.io/badge/Claude-tool%20use-D97757?logo=anthropic&logoColor=white)
 ![Streamlit](https://img.shields.io/badge/Streamlit-dashboard-FF4B4B?logo=streamlit&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Colima--ready-2496ED?logo=docker&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-20%20passing-brightgreen?logo=pytest&logoColor=white)
-![License](https://img.shields.io/badge/license-MIT-blue)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+![mypy](https://img.shields.io/badge/mypy-checked-2A6DB2)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 > Ask business questions in plain language and get **governed, deterministic**
 > answers — an LLM agent that reasons over a **dbt + MetricFlow semantic layer**,
@@ -216,16 +218,26 @@ Medallion pattern.
 
 ---
 
-## Testing
+## Testing & quality
 
 ```bash
-make test
+make test       # pytest suite
+make check      # everything CI runs: ruff lint + format check, mypy, pytest
+make format     # auto-format + autofix (ruff)
+make hooks      # install the pre-commit git hooks
 ```
 
 - **Unit tests** (no warehouse): guardrails, filter compilation, injection
   escaping, tool-schema construction.
 - **Integration tests**: real MetricFlow execution and the full agent loop with
   a mocked LLM client. They skip cleanly if the warehouse isn't built yet.
+
+Every push runs the [CI pipeline](.github/workflows/ci.yml): it lints
+(**Ruff**), type-checks (**mypy**), then builds the warehouse from scratch
+(synthetic data → `dbt build` → `dbt parse`) so the integration tests run against
+a *real* semantic layer — no API key needed, the LLM is mocked. The same gates
+run locally via **pre-commit** (`make hooks`), so the tree stays green before it
+ever reaches GitHub.
 
 ---
 

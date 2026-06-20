@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import pandas as pd
 
-from .guardrails import MetricQuery
 from . import semantic_layer as sl
+from .guardrails import MetricQuery
 
 
 def fetch(

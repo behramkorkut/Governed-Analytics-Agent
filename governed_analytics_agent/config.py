@@ -32,8 +32,11 @@ class Settings(BaseSettings):
 
     @property
     def warehouse_db_abs(self) -> Path:
-        return self.warehouse_db if self.warehouse_db.is_absolute() \
+        return (
+            self.warehouse_db
+            if self.warehouse_db.is_absolute()
             else (PROJECT_ROOT / self.warehouse_db).resolve()
+        )
 
     @property
     def semantic_manifest_path(self) -> Path:

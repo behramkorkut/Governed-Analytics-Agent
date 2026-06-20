@@ -4,7 +4,7 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-from governed_analytics_agent.agent import build_tool, _tool_input_to_query
+from governed_analytics_agent.agent import _tool_input_to_query, build_tool
 from governed_analytics_agent.catalog import Catalog, Metric, load_catalog
 from governed_analytics_agent.config import settings
 
@@ -28,7 +28,12 @@ def test_tool_input_parses_filters():
         {
             "metrics": ["revenue"],
             "filters": [
-                {"dimension": "metric_time", "operator": "=", "value": "2026-05-01", "grain": "month"}
+                {
+                    "dimension": "metric_time",
+                    "operator": "=",
+                    "value": "2026-05-01",
+                    "grain": "month",
+                }
             ],
         }
     )
@@ -55,7 +60,11 @@ class _FakeMessages:
                 type="tool_use",
                 name="query_semantic_layer",
                 id="t1",
-                input={"metrics": ["revenue"], "group_by": ["product__category"], "order_by": ["-revenue"]},
+                input={
+                    "metrics": ["revenue"],
+                    "group_by": ["product__category"],
+                    "order_by": ["-revenue"],
+                },
             )
             return NS(stop_reason="tool_use", content=[tool_use])
         return NS(stop_reason="end_turn", content=[NS(type="text", text="Electronics leads.")])

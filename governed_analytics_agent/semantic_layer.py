@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import csv
 import os
+import shutil
 import subprocess
+import sys
 import tempfile
 from functools import lru_cache
 from pathlib import Path
@@ -53,12 +55,27 @@ def compile_where(query: MetricQuery, time_dimensions: set[str]) -> str | None:
     return " AND ".join(_compile_condition(f, time_dimensions) for f in query.filters)
 
 
+@lru_cache(maxsize=1)
 def _base_cmd() -> list[str]:
-    # `uv run mf ...` so it works with the project's locked environment.
+    """Resolve the MetricFlow CLI entry point.
+
+    Prefer the `mf` executable living next to the current interpreter (the
+    active venv) — calling it directly avoids paying `uv`'s environment-resolution
+    cost on every single query, which matters because the dashboard fires several
+    metric queries per page load. Fall back to PATH, then to `uv run mf`.
+    """
+    local_mf = Path(sys.executable).parent / "mf"
+    if local_mf.exists():
+        return [str(local_mf)]
+    found = shutil.which("mf")
+    if found:
+        return [found]
     return ["uv", "run", "mf"]
 
 
-def _run_mf(args: list[str], extra_env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
+def _run_mf(
+    args: list[str], extra_env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess:
     env = {**os.environ, **settings.metricflow_env(), **(extra_env or {})}
     return subprocess.run(
         _base_cmd() + args,
@@ -93,18 +110,16 @@ def run_query(q: MetricQuery) -> list[dict]:
     """Execute the metric query and return rows as a list of dicts."""
     with tempfile.TemporaryDirectory() as tmp:
         out = Path(tmp) / "result.csv"
-        proc = _run_mf(_query_args(q) + ["--csv", str(out)])
+        proc = _run_mf([*_query_args(q), "--csv", str(out)])
         if proc.returncode != 0 or not out.exists():
-            raise SemanticLayerError(
-                f"MetricFlow query failed:\n{proc.stderr or proc.stdout}"
-            )
+            raise SemanticLayerError(f"MetricFlow query failed:\n{proc.stderr or proc.stdout}")
         with out.open(newline="", encoding="utf-8") as f:
             return list(csv.DictReader(f))
 
 
 def explain_sql(q: MetricQuery) -> str:
     """Return the deterministic SQL MetricFlow would run (for transparency)."""
-    proc = _run_mf(_query_args(q) + ["--explain"])
+    proc = _run_mf([*_query_args(q), "--explain"])
     text = proc.stdout
     marker = "SELECT"
     idx = text.find(marker)

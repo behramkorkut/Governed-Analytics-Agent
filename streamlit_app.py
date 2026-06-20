@@ -39,6 +39,7 @@ def get_kpis() -> dict:
 @st.cache_resource
 def get_agent():
     from governed_analytics_agent.agent import GovernedAnalyticsAgent
+
     return GovernedAnalyticsAgent(catalog=get_catalog())
 
 
@@ -128,8 +129,11 @@ else:
             if res.query:
                 with st.expander("How this was computed (transparency)"):
                     st.write(
-                        {"metrics": res.query.metrics, "group_by": res.query.group_by,
-                         "order_by": res.query.order_by}
+                        {
+                            "metrics": res.query.metrics,
+                            "group_by": res.query.group_by,
+                            "order_by": res.query.order_by,
+                        }
                     )
                     if res.rows:
                         st.dataframe(pd.DataFrame(res.rows), width="stretch")

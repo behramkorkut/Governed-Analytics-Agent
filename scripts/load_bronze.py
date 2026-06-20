@@ -35,8 +35,9 @@ RAW_AS_TEXT = {
 def load_table(con: duckdb.DuckDBPyConnection, name: str) -> int:
     csv_path = RAW_DIR / f"{name}.csv"
     if not csv_path.exists():
-        raise FileNotFoundError(f"Missing landing file: {csv_path} "
-                                f"(run generate_raw_data.py first)")
+        raise FileNotFoundError(
+            f"Missing landing file: {csv_path} (run generate_raw_data.py first)"
+        )
 
     # Build an optional types override (force some columns to VARCHAR)
     overrides = RAW_AS_TEXT.get(name)
