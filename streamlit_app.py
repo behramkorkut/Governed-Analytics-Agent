@@ -20,6 +20,43 @@ from governed_analytics_agent.config import settings
 st.set_page_config(page_title="Governed Analytics", page_icon="📊", layout="wide")
 
 
+# --- First-boot bootstrap --------------------------------------------------
+# On a fresh deploy (e.g. Streamlit Community Cloud) the warehouse isn't built
+# yet — the DuckDB file and semantic manifest are generated artifacts, never
+# committed. Build them once, with the same pipeline as `make warehouse` and the
+# Docker entrypoint. A no-op locally / in Docker, where the warehouse exists.
+@st.cache_resource(show_spinner="First boot: building the warehouse (~30s)…")
+def _ensure_warehouse() -> bool:
+    import os
+    import runpy
+
+    from governed_analytics_agent.config import PROJECT_ROOT
+
+    if settings.semantic_manifest_path.exists() and settings.warehouse_db_abs.exists():
+        return True
+
+    os.environ["WAREHOUSE_DB"] = str(settings.warehouse_db_abs)
+    os.environ["DBT_PROFILES_DIR"] = str(settings.dbt_project_dir)
+    runpy.run_path(str(PROJECT_ROOT / "scripts" / "generate_raw_data.py"), run_name="__main__")
+    runpy.run_path(str(PROJECT_ROOT / "scripts" / "load_bronze.py"), run_name="__main__")
+
+    from dbt.cli.main import dbtRunner
+
+    dbt = dbtRunner()
+    dirs = [
+        "--project-dir",
+        str(settings.dbt_project_dir),
+        "--profiles-dir",
+        str(settings.dbt_project_dir),
+    ]
+    dbt.invoke(["build", *dirs])
+    dbt.invoke(["parse", *dirs])
+    return True
+
+
+_ensure_warehouse()
+
+
 # --- Cached data access (each call shells out to MetricFlow once) ----------
 @st.cache_resource
 def get_catalog():
@@ -163,6 +200,15 @@ else:
                         )
                         if res.sql:
                             st.code(res.sql, language="sql")
+
+                    # Anti-fabrication audit: do all cited figures trace to the data?
+                    if res.fabrication_flags:
+                        st.caption(
+                            "⚠️ Chiffres cités non retrouvés dans les données : "
+                            + ", ".join(res.fabrication_flags)
+                        )
+                    else:
+                        st.caption("✓ Tous les chiffres cités figurent dans les données.")
 
                 cost = res.cost_usd
                 cost_txt = f"${cost:.4f}" if cost is not None else "n/a"

@@ -1,0 +1,44 @@
+version: 2
+
+# Exposures close the lineage loop: they declare the *downstream consumers* of
+# the dbt project, so `dbt docs` draws the graph end to end — raw → Silver →
+# Gold → semantic layer → these two apps. A reviewer can see exactly which
+# models a dashboard or the agent depends on (and `dbt build --select +exposure`
+# can target only what feeds them).
+exposures:
+  - name: governed_dashboard
+    label: "Governed Analytics — Streamlit dashboard"
+    type: dashboard
+    maturity: high
+    url: "http://localhost:8501"
+    description: >
+      BI dashboard whose KPIs and charts are computed from the MetricFlow
+      semantic layer (no hand-written SQL), plus a governed chat over the same
+      metrics.
+    depends_on:
+      - ref('fact_sales')
+      - ref('dim_customers')
+      - ref('dim_products')
+      - ref('dim_stores')
+      - ref('dim_dates')
+    owner:
+      name: Behram Korkut
+      email: behramkorkut@gmail.com
+
+  - name: governed_agent
+    label: "Governed Analytics — Claude tool-use agent"
+    type: application
+    maturity: high
+    description: >
+      LLM agent that maps a natural-language question to governed metrics +
+      dimensions and runs deterministic SQL via MetricFlow. It never writes SQL;
+      its only lever on the warehouse is the validated semantic-layer query.
+    depends_on:
+      - ref('fact_sales')
+      - ref('dim_customers')
+      - ref('dim_products')
+      - ref('dim_stores')
+      - ref('dim_dates')
+    owner:
+      name: Behram Korkut
+      email: behramkorkut@gmail.com

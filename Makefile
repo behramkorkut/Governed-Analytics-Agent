@@ -8,7 +8,7 @@ export DBT_PROFILES_DIR := $(ROOT)/dbt/retail_dwh
 DBT  := uv run dbt
 PROJ := --project-dir dbt/retail_dwh --profiles-dir dbt/retail_dwh
 
-.PHONY: help setup data build parse warehouse run agent test eval \
+.PHONY: help setup data build parse warehouse run agent test cov eval \
         format lint typecheck check hooks docker-up docker-down clean
 
 help: ## Show this help
@@ -38,6 +38,9 @@ agent: ## Ask the agent, e.g. make agent Q="revenue by category in May 2026"
 
 test: ## Run the pytest suite
 	uv run pytest
+
+cov: ## Run tests with a coverage report (terminal, shows missing lines)
+	uv run pytest --cov=governed_analytics_agent --cov-report=term-missing
 
 eval: ## Measure agent routing accuracy (needs ANTHROPIC_API_KEY + warehouse)
 	uv run python -m eval.run_eval

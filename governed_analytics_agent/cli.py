@@ -21,6 +21,8 @@ def _print_result(res) -> None:
     cost = res.cost_usd
     cost_txt = f"${cost:.4f}" if cost is not None else "n/a"
     print(f"  cost    : {res.latency_s:.1f}s · {res.usage.total_tokens:,} tokens · {cost_txt}")
+    if res.fabrication_flags:
+        print(f"  ⚠ cited figures not found in the data: {res.fabrication_flags}")
 
 
 def main() -> None:

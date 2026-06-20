@@ -3,7 +3,8 @@ name = "governed-analytics-agent"
 version = "0.1.0"
 description = "Governed analytics agent: dbt Medallion + MetricFlow semantic layer + LLM agent over the semantic layer (no raw text-to-SQL)."
 readme = "README.md"
-requires-python = ">=3.10"
+# Pinned, tested, and shipped on 3.11 (.python-version, Docker image, CI all 3.11).
+requires-python = ">=3.11"
 dependencies = [
     "anthropic>=0.111.0",
     "dbt-duckdb>=1.8",
@@ -31,7 +32,7 @@ addopts = "-q"
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py311"
 
 [tool.ruff.lint]
 # A focused, high-signal rule set: pyflakes/pycodestyle, import sorting,
@@ -52,3 +53,16 @@ check_untyped_defs = true
 warn_redundant_casts = true
 warn_unused_ignores = true
 no_implicit_optional = true
+
+[tool.coverage.run]
+source = ["governed_analytics_agent"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+# Defensive / unreachable-in-test paths, not logic to cover.
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]

@@ -28,3 +28,10 @@ docs/journaldebord.md
 
 # Generated eval results
 eval/last_run.json
+
+# Coverage artifacts
+.coverage
+htmlcov/
+
+# Streamlit local secrets (deploy secrets live in the Streamlit Cloud UI)
+.streamlit/secrets.toml

@@ -66,5 +66,5 @@ jobs:
       - name: dbt parse (semantic manifest)
         run: uv run dbt parse --project-dir dbt/retail_dwh --profiles-dir dbt/retail_dwh
 
-      - name: Pytest (unit + integration, no API key needed — LLM is mocked)
-        run: uv run pytest
+      - name: Pytest with coverage gate (unit + integration; LLM is mocked, no API key)
+        run: uv run pytest --cov=governed_analytics_agent --cov-report=term-missing --cov-fail-under=78

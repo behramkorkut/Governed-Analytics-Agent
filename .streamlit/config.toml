@@ -1,0 +1,13 @@
+# Streamlit theme + server defaults. Picked up automatically by `streamlit run`
+# and by Streamlit Community Cloud, so a deployed instance looks intentional.
+[theme]
+base = "light"
+primaryColor = "#D97757"            # terracotta — matches the Claude accent
+secondaryBackgroundColor = "#F4F1EA"
+font = "sans serif"
+
+[server]
+headless = true
+
+[browser]
+gatherUsageStats = false

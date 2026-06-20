@@ -173,7 +173,17 @@ docker compose up --build  # http://localhost:8501
 ```
 
 The container builds the warehouse on first boot and persists it in a named
-volume. Secrets are injected at runtime via `.env`, never baked into the image.
+volume. Secrets are injected at runtime via `.env`, never baked into the image,
+and a **healthcheck** polls Streamlit's `/_stcore/health` so orchestration knows
+when the app is actually ready.
+
+### Live demo
+
+> **Live demo:** _deploy your own in ~2 minutes_ — push this repo to GitHub, then
+> on [share.streamlit.io](https://share.streamlit.io) point a new app at
+> `streamlit_app.py` and add `ANTHROPIC_API_KEY` as a secret. A polished theme
+> ships in [`.streamlit/config.toml`](.streamlit/config.toml). _(Replace this
+> note with your live URL + a short GIF once deployed.)_
 
 ---
 
@@ -187,13 +197,16 @@ governed-analytics-agent/
 │   ├── semantic_layer.py       # MetricFlow client + safe filter compilation
 │   ├── agent.py                # Claude tool-use loop (tracing + insights wired in)
 │   ├── insights.py             # deterministic facts: shares, deltas, coverage
+│   ├── verify.py               # anti-fabrication check (cited figures vs data)
 │   ├── pricing.py              # token accounting + cost (USD)
 │   ├── evaluation.py           # routing-accuracy scorer (pure, tested)
 │   ├── reporting.py            # governed metrics -> DataFrames (for the BI)
 │   └── cli.py
 ├── eval/                       # routing-accuracy suite: labelled cases + runner
+├── .streamlit/config.toml      # dashboard theme + deploy config
 ├── dbt/retail_dwh/             # dbt project
 │   └── models/
+│       ├── _exposures.yml      # lineage: dashboard + agent as dbt exposures
 │       ├── staging/            # Silver (cleaning / conforming)
 │       └── marts/              # Gold (star schema) + semantic/ (MetricFlow)
 ├── scripts/                    # generate synthetic data, load Bronze
@@ -220,28 +233,35 @@ The source data is **synthetic and deterministic** (seeded), and deliberately
 so the Silver layer has real cleaning/conforming work — the whole point of the
 Medallion pattern.
 
+The dashboard and the agent are declared as **dbt exposures**
+([`_exposures.yml`](dbt/retail_dwh/models/_exposures.yml)), so `dbt docs` draws
+the lineage end to end — raw → Silver → Gold → semantic layer → app — and you can
+target everything feeding a consumer with `dbt build --select +exposure:governed_dashboard`.
+
 ---
 
 ## Testing & quality
 
 ```bash
 make test       # pytest suite
+make cov        # tests + coverage report (term-missing)
 make check      # everything CI runs: ruff lint + format check, mypy, pytest
 make format     # auto-format + autofix (ruff)
 make hooks      # install the pre-commit git hooks
 ```
 
 - **Unit tests** (no warehouse): guardrails, filter compilation, injection
-  escaping, tool-schema construction.
+  escaping, deterministic insights, token-cost accounting, the eval scorer, and
+  the anti-fabrication check.
 - **Integration tests**: real MetricFlow execution and the full agent loop with
   a mocked LLM client. They skip cleanly if the warehouse isn't built yet.
 
 Every push runs the [CI pipeline](.github/workflows/ci.yml): it lints
 (**Ruff**), type-checks (**mypy**), then builds the warehouse from scratch
 (synthetic data → `dbt build` → `dbt parse`) so the integration tests run against
-a *real* semantic layer — no API key needed, the LLM is mocked. The same gates
-run locally via **pre-commit** (`make hooks`), so the tree stays green before it
-ever reaches GitHub.
+a *real* semantic layer — no API key needed, the LLM is mocked. Coverage is
+gated (**`--cov-fail-under`**). The same checks run locally via **pre-commit**
+(`make hooks`), so the tree stays green before it ever reaches GitHub.
 
 ---
 
@@ -265,6 +285,11 @@ the semantic layer). The remaining risk is the LLM's *commentary*. Safeguards
 - **Deterministic routing** (`temperature=0`) + an **analytical-rigor system
   prompt**: separate facts from interpretation, don't over-claim from few points,
   state filter assumptions, never compare against an un-queried period.
+- **Anti-fabrication audit.** A deterministic check
+  ([`verify.py`](governed_analytics_agent/verify.py)) re-reads the answer and
+  confirms every figure it cites traces back to the returned rows or the
+  computed insights — handling EN/FR number formats and rounding. Unbacked
+  numbers are flagged in the UI. No second LLM call; pure and unit-tested.
 - **Observability.** Every answer reports its **token usage, cost (USD) and
   latency** ([`pricing.py`](governed_analytics_agent/pricing.py)) — an LLM
   product that can't tell you what it spent isn't a serious one.
@@ -281,9 +306,9 @@ logic is pure and unit-tested** so the suite itself is trustworthy.
 make eval        # NL question → expected metric selection, scored against the live agent
 ```
 
-Still on the roadmap: a **critic / verification pass** (LLM-as-judge or rules)
-that rejects any claim not backed by a query, plus an anti-fabrication check that
-every cited number appears in the returned rows.
+Still on the roadmap: an **LLM-as-judge critic pass** to flag unsupported
+*qualitative* claims (the numeric anti-fabrication check above already covers
+figures), and expanding the eval set with adversarial/ambiguous questions.
 
 ---
 

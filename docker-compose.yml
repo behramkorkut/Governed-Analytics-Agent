@@ -15,6 +15,18 @@ services:
     environment:
       WAREHOUSE_DB: /app/data/warehouse.duckdb
       DBT_PROFILES_DIR: /app/dbt/retail_dwh
+    # Probe Streamlit's health endpoint via Python (no curl in the slim image).
+    # Generous start_period: first boot builds the warehouse before serving.
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8501/_stcore/health', timeout=2).read()==b'ok' else 1)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
     # Persist the generated warehouse across container restarts.
     volumes:
       - warehouse:/app/data

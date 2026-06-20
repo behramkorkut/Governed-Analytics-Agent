@@ -22,6 +22,7 @@ from anthropic.types import MessageParam, ToolParam
 
 from . import insights as ins
 from . import semantic_layer as sl
+from . import verify
 from .catalog import Catalog, load_catalog
 from .config import settings
 from .guardrails import Filter, GuardrailError, MetricQuery, validate
@@ -87,6 +88,9 @@ class AgentResult:
     # Deterministic facts computed from the rows (shares, deltas, coverage),
     # so the model phrases pre-computed numbers instead of estimating them.
     insights: ins.Insights | None = None
+    # Figures cited in the answer that are NOT backed by the returned data.
+    # Empty == every number traces back to the rows/insights (anti-fabrication).
+    fabrication_flags: list[str] = field(default_factory=list)
     # Observability: what the run cost and how long it took.
     usage: Usage = field(default_factory=Usage)
     model: str = ""
@@ -260,6 +264,8 @@ class GovernedAnalyticsAgent:
                 result.sql = sl.explain_sql(result.query)
             except Exception:  # noqa: BLE001 — transparency is best-effort, never fatal
                 result.sql = ""
+        # Audit: which cited figures (if any) aren't backed by the data.
+        result.fabrication_flags = verify.check_answer(result.answer, result.rows, result.insights)
         result.latency_s = round(time.perf_counter() - started, 3)
         return result
 
