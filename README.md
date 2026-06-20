@@ -1,5 +1,6 @@
 # Governed Analytics Agent
 
+[![Live demo](https://img.shields.io/badge/Live_demo-Streamlit-FF4B4B?logo=streamlit&logoColor=white)](https://governed-analytics-agent-dtpvfmozudrpr8j3mka8of.streamlit.app/)
 [![CI](https://github.com/behramkorkut/Governed-Analytics-Agent/actions/workflows/ci.yml/badge.svg)](https://github.com/behramkorkut/Governed-Analytics-Agent/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
 ![uv](https://img.shields.io/badge/packaging-uv-DE5FE9?logo=astral&logoColor=white)
@@ -179,11 +180,17 @@ when the app is actually ready.
 
 ### Live demo
 
-> **Live demo:** _deploy your own in ~2 minutes_ — push this repo to GitHub, then
-> on [share.streamlit.io](https://share.streamlit.io) point a new app at
-> `streamlit_app.py` and add `ANTHROPIC_API_KEY` as a secret. A polished theme
-> ships in [`.streamlit/config.toml`](.streamlit/config.toml). _(Replace this
-> note with your live URL + a short GIF once deployed.)_
+**▶ [governed-analytics-agent.streamlit.app](https://governed-analytics-agent-dtpvfmozudrpr8j3mka8of.streamlit.app/)** — running on Streamlit Community Cloud.
+
+The app **self-bootstraps**: on a fresh deploy it builds the warehouse on first
+boot (synthetic data → `dbt build` → `dbt parse`), exactly like the Docker
+entrypoint, so there's nothing to provision — the dashboard and governed chat
+work out of the box. (First load takes ~30s while it builds; then it's cached.)
+
+> Deploy your own: push to GitHub, then on
+> [share.streamlit.io](https://share.streamlit.io) point a new app at
+> `streamlit_app.py` (Python 3.11) and add `ANTHROPIC_API_KEY` as a secret. The
+> theme ships in [`.streamlit/config.toml`](.streamlit/config.toml).
 
 ---
 
