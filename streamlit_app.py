@@ -28,29 +28,39 @@ st.set_page_config(page_title="Governed Analytics", page_icon="📊", layout="wi
 @st.cache_resource(show_spinner="First boot: building the warehouse (~30s)…")
 def _ensure_warehouse() -> bool:
     import os
-    import runpy
+    import shutil
+    import subprocess
+    import sys
+    from pathlib import Path
 
     from governed_analytics_agent.config import PROJECT_ROOT
 
     if settings.semantic_manifest_path.exists() and settings.warehouse_db_abs.exists():
         return True
 
-    os.environ["WAREHOUSE_DB"] = str(settings.warehouse_db_abs)
-    os.environ["DBT_PROFILES_DIR"] = str(settings.dbt_project_dir)
-    runpy.run_path(str(PROJECT_ROOT / "scripts" / "generate_raw_data.py"), run_name="__main__")
-    runpy.run_path(str(PROJECT_ROOT / "scripts" / "load_bronze.py"), run_name="__main__")
-
-    from dbt.cli.main import dbtRunner
-
-    dbt = dbtRunner()
-    dirs = [
-        "--project-dir",
-        str(settings.dbt_project_dir),
-        "--profiles-dir",
-        str(settings.dbt_project_dir),
+    env = {
+        **os.environ,
+        "WAREHOUSE_DB": str(settings.warehouse_db_abs),
+        "DBT_PROFILES_DIR": str(settings.dbt_project_dir),
+    }
+    # Each step runs in its OWN process so the DuckDB file lock is released
+    # before MetricFlow (also a subprocess) queries it. An in-process dbt build
+    # would keep the warehouse locked by the Streamlit process and every `mf`
+    # call would then fail with a DuckDB "conflicting lock" error.
+    dbt = shutil.which("dbt") or str(Path(sys.executable).parent / "dbt")
+    project = str(settings.dbt_project_dir)
+    steps = [
+        [sys.executable, str(PROJECT_ROOT / "scripts" / "generate_raw_data.py")],
+        [sys.executable, str(PROJECT_ROOT / "scripts" / "load_bronze.py")],
+        [dbt, "build", "--project-dir", project, "--profiles-dir", project],
+        [dbt, "parse", "--project-dir", project, "--profiles-dir", project],
     ]
-    dbt.invoke(["build", *dirs])
-    dbt.invoke(["parse", *dirs])
+    for cmd in steps:
+        proc = subprocess.run(cmd, cwd=str(PROJECT_ROOT), env=env, capture_output=True, text=True)
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"Warehouse build step failed: {' '.join(cmd)}\n{proc.stderr or proc.stdout}"
+            )
     return True
 
 
