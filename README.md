@@ -47,18 +47,40 @@ This repo implements exactly that, end to end.
 
 ---
 
-## Screenshots
+## The governed agent in action
 
-**Governed conversational analytics** — the agent maps the question to metrics +
-dimensions, runs deterministic SQL, and shows a transparency panel (metric used,
-rows, and the exact SQL):
+A genuinely open-ended, natural-language question — *"Can we get the recurring
+customers… the proportion of customers who made more than one purchase, on
+different occasions? Is this even possible? Do we have data for that?"* — and the
+agent's answer:
 
-![Governed agent chat](screenshots/agent-chat.png)
+![Governed agent — a natural-language question and an honest, governed answer](screenshots/agent_in_action_1.png)
 
-**BI dashboard** — KPIs and charts computed from the *same* governed metrics, no
-hand-written SQL:
+![Governed agent — what it can and cannot do, with a concrete recommendation](screenshots/agent_in_action_2.png)
 
-![Dashboard](screenshots/dashboard.png)
+### Why this is the whole point of the semantic layer
+
+This one exchange is the clearest argument for a **governed** agent over raw
+text-to-SQL. Asked for a metric that simply isn't defined, the agent does **not**
+hallucinate a `repeat_customers` figure or improvise a `HAVING COUNT(*) > 1`
+query. Instead it:
+
+- **stays inside the catalog** — it can only select metrics that actually exist,
+  so a fabricated number is *structurally* impossible, not just discouraged;
+- **draws the right boundary** — it distinguishes *"the data can't support this"*
+  from *"the semantic layer doesn't expose this yet"* (here the data exists, the
+  governed metric doesn't) and says so plainly;
+- **offers an honest proxy** (`orders / active_customers`), clearly labelled as a
+  proxy rather than the exact answer;
+- **points to the correct fix** — define a new governed metric in dbt — instead
+  of quietly returning something that looks right but isn't.
+
+A raw text-to-SQL bot optimises for *producing an answer*; this one optimises for
+*producing a trustworthy answer, or none*. Codify each metric once, let the LLM
+**route** to it but never **invent** it — that is what makes agentic analytics
+safe to put in front of a decision-maker.
+
+> ▶ **Try your own question on the [live demo](https://governed-analytics-agent-dtpvfmozudrpr8j3mka8of.streamlit.app/)** — and watch the Reading / Figures split, the exact generated SQL, and the anti-fabrication check in real time.
 
 ---
 
