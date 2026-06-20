@@ -94,6 +94,56 @@ def eur(x: float) -> str:
     return f"{x:,.0f} €".replace(",", " ")
 
 
+def render_answer(res) -> None:
+    """Render one governed answer: 📖 Reading (LLM) vs 🔢 Figures (deterministic)."""
+    st.markdown("**📖 Lecture** _(interprétation du modèle)_")
+    st.markdown(res.answer)
+    if not res.query:
+        return
+
+    ins = res.insights
+    if ins and ins.partial_latest:
+        st.warning(
+            "⚠️ La dernière période est **partielle** (données incomplètes) — "
+            "ne pas l'interpréter comme une baisse."
+        )
+
+    # Deterministic + auditable: same source of truth as the KPIs, never the LLM.
+    with st.container(border=True):
+        st.markdown("**🔢 Chiffres** _(déterministe, auditable)_")
+        if ins and ins.delta:
+            d = ins.delta
+            delta = f"{d['abs']:+,.0f}"
+            if d["pct"] is not None:
+                delta += f" ({d['pct']:+}%)"
+            st.metric(f"{ins.metric} — {d['latest']}", f"{d['latest_value']:,.0f}", delta)
+        if res.rows:
+            st.dataframe(pd.DataFrame(res.rows), width="stretch")
+        with st.expander("Métriques, dimensions & SQL généré"):
+            st.write(
+                {
+                    "metrics": res.query.metrics,
+                    "group_by": res.query.group_by,
+                    "order_by": res.query.order_by,
+                }
+            )
+            if res.sql:
+                st.code(res.sql, language="sql")
+        if res.fabrication_flags:
+            st.caption(
+                "⚠️ Chiffres cités non retrouvés dans les données : "
+                + ", ".join(res.fabrication_flags)
+            )
+        else:
+            st.caption("✓ Tous les chiffres cités figurent dans les données.")
+
+    cost = res.cost_usd
+    cost_txt = f"${cost:.4f}" if cost is not None else "n/a"
+    st.caption(
+        f"⏱ {res.latency_s:.1f}s · {res.usage.total_tokens:,} tokens · {cost_txt} · {res.model}"
+    )
+
+
 # --- Sidebar ---------------------------------------------------------------
 catalog = get_catalog()
 with st.sidebar:
@@ -109,7 +159,41 @@ with st.sidebar:
         st.code(catalog.describe(), language="text")
 
 
-st.title("📊 Governed Analytics — Retail")
+st.markdown(
+    """
+    <style>
+      /* KPI + figure cards: subtle terracotta-tinted panels */
+      [data-testid="stMetric"] {
+        background: rgba(217, 119, 87, 0.07);
+        border: 1px solid rgba(217, 119, 87, 0.22);
+        border-radius: 14px;
+        padding: 14px 16px;
+      }
+      /* Example-question chips */
+      .stButton > button {
+        border-radius: 999px;
+        border: 1px solid rgba(217, 119, 87, 0.40);
+        background: rgba(217, 119, 87, 0.08);
+        font-weight: 500;
+      }
+      .stButton > button:hover {
+        border-color: #D97757;
+        background: rgba(217, 119, 87, 0.18);
+      }
+    </style>
+    <div style="background: linear-gradient(135deg, #D97757 0%, #B5471F 100%);
+                padding: 1.5rem 1.8rem; border-radius: 18px; margin-bottom: 1.3rem;
+                box-shadow: 0 6px 24px rgba(217, 119, 87, 0.28);">
+      <h1 style="color: #fff; margin: 0; font-size: 2.05rem; font-weight: 700;
+                 letter-spacing: -0.5px;">Governed Analytics — Retail</h1>
+      <p style="color: #fdeee7; margin: 0.45rem 0 0; font-size: 1.02rem;">
+        One governed semantic layer — every KPI, chart and chat answer is computed
+        from the <b>same</b> metrics. No hand-written SQL, one source of truth.
+      </p>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 # --- KPI row ---------------------------------------------------------------
 try:
@@ -149,81 +233,44 @@ with right:
 st.divider()
 
 # --- Governed chat ---------------------------------------------------------
-st.subheader("💬 Ask the data (governed agent)")
+st.subheader("Ask the data — governed agent")
 st.caption(
     "The agent maps your question to governed metrics + dimensions and runs "
     "deterministic SQL via MetricFlow. It never invents numbers or SQL."
 )
 
 if not settings.anthropic_api_key:
-    st.info("Set ANTHROPIC_API_KEY in your .env to enable the chat.")
+    st.info("Set ANTHROPIC_API_KEY in your .env (or Streamlit secrets) to enable the chat.")
 else:
     if "history" not in st.session_state:
         st.session_state.history = []
+
+    # One-click example questions — a recruiter can try the agent without
+    # knowing the schema. "Monthly revenue trend" also shows the partial-period
+    # warning, since the data ends mid-June.
+    examples = [
+        "Revenue by product category",
+        "Monthly revenue trend",
+        "Return rate by country",
+        "Average order value by channel",
+    ]
+    st.caption("Pas d'idée ? Clique sur une question :")
+    clicked = None
+    for col, q in zip(st.columns(len(examples)), examples, strict=True):
+        if col.button(q, use_container_width=True, key=f"ex::{q}"):
+            clicked = q
 
     for item in st.session_state.history:
         with st.chat_message(item["role"]):
             st.markdown(item["content"])
 
-    if prompt := st.chat_input("e.g. Quel pays a le plus fort taux de retour ?"):
+    prompt = st.chat_input("Pose ta question sur les données retail…") or clicked
+    if prompt:
         st.session_state.history.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
         with st.chat_message("assistant"):
             with st.spinner("Querying the governed semantic layer…"):
                 res = get_agent().run(prompt)
-
-            # 📖 Reading — the LLM's interpretation. Fallible commentary, kept
-            # visually separate from the authoritative figures below.
-            st.markdown("**📖 Lecture** _(interprétation du modèle)_")
-            st.markdown(res.answer)
-
-            if res.query:
-                ins = res.insights
-                if ins and ins.partial_latest:
-                    st.warning(
-                        "⚠️ La dernière période est **partielle** (données "
-                        "incomplètes) — ne pas l'interpréter comme une baisse."
-                    )
-
-                # 🔢 Figures — deterministic and auditable: same source of truth
-                # as the KPIs above, computed in code, never by the LLM.
-                with st.container(border=True):
-                    st.markdown("**🔢 Chiffres** _(déterministe, auditable)_")
-                    if ins and ins.delta:
-                        d = ins.delta
-                        delta = f"{d['abs']:+,.0f}"
-                        if d["pct"] is not None:
-                            delta += f" ({d['pct']:+}%)"
-                        st.metric(
-                            f"{ins.metric} — {d['latest']}", f"{d['latest_value']:,.0f}", delta
-                        )
-                    if res.rows:
-                        st.dataframe(pd.DataFrame(res.rows), width="stretch")
-                    with st.expander("Métriques, dimensions & SQL généré"):
-                        st.write(
-                            {
-                                "metrics": res.query.metrics,
-                                "group_by": res.query.group_by,
-                                "order_by": res.query.order_by,
-                            }
-                        )
-                        if res.sql:
-                            st.code(res.sql, language="sql")
-
-                    # Anti-fabrication audit: do all cited figures trace to the data?
-                    if res.fabrication_flags:
-                        st.caption(
-                            "⚠️ Chiffres cités non retrouvés dans les données : "
-                            + ", ".join(res.fabrication_flags)
-                        )
-                    else:
-                        st.caption("✓ Tous les chiffres cités figurent dans les données.")
-
-                cost = res.cost_usd
-                cost_txt = f"${cost:.4f}" if cost is not None else "n/a"
-                st.caption(
-                    f"⏱ {res.latency_s:.1f}s · {res.usage.total_tokens:,} tokens · "
-                    f"{cost_txt} · {res.model}"
-                )
+            render_answer(res)
         st.session_state.history.append({"role": "assistant", "content": res.answer})
