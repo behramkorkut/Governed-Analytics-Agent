@@ -35,8 +35,43 @@ services:
     networks:
       - gaa-net
 
+  # REST API for the governed agent — opt-in service:
+  #   docker compose --profile api up --build     -> http://localhost:8080/docs
+  # Own volume: DuckDB is single-writer, so the api and the dashboard each get
+  # their own warehouse file instead of fighting over a lock.
+  api:
+    profiles: ["api"]
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: governed-analytics-agent
+    container_name: governed-analytics-agent-api
+    command: ["api"]
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      WAREHOUSE_DB: /app/data/warehouse.duckdb
+      DBT_PROFILES_DIR: /app/dbt/retail_dwh
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if b'ok' in urllib.request.urlopen('http://localhost:8080/health', timeout=2).read() else 1)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+    volumes:
+      - warehouse-api:/app/data
+    networks:
+      - gaa-net
+
 volumes:
   warehouse:
+  warehouse-api:
 
 networks:
   gaa-net:

@@ -199,6 +199,26 @@ make test                  # 20 tests
 
 Run `make help` to see every target.
 
+### Serving the agent as a REST API
+
+The same governed loop is exposed as a **FastAPI** service — auto-generated
+OpenAPI/Swagger at [http://localhost:8080/docs](http://localhost:8080/docs):
+
+```bash
+make api
+curl -s -X POST localhost:8080/ask -H "Content-Type: application/json" \
+  -d '{"question": "Revenue and gross margin by product category in 2026?"}'
+```
+
+Every response ships the **full audit trail**: the metrics the agent selected,
+the deterministic SQL, the returned rows, the anti-fabrication flags, and the
+token usage / cost / latency — a client integrating the agent gets *auditable*
+answers, not just text. The API layer is dependency-injected and tested with a
+mocked LLM against the real semantic layer (`tests/test_api.py`).
+
+With Docker: `docker compose --profile api up --build` (opt-in service with its
+own warehouse volume — DuckDB is single-writer).
+
 ### One command with Docker (Colima-ready)
 
 ```bash
@@ -241,6 +261,7 @@ governed-analytics-agent/
 │   ├── pricing.py              # token accounting + cost (USD)
 │   ├── evaluation.py           # routing-accuracy scorer (pure, tested)
 │   ├── reporting.py            # governed metrics -> DataFrames (for the BI)
+│   ├── api.py                  # REST serving layer (FastAPI): /ask + audit trail
 │   └── cli.py
 ├── eval/                       # routing-accuracy suite: labelled cases + runner
 ├── .streamlit/config.toml      # dashboard theme + deploy config

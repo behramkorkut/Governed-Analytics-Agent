@@ -36,6 +36,9 @@ run: ## Launch the Streamlit dashboard
 agent: ## Ask the agent, e.g. make agent Q="revenue by category in May 2026"
 	uv run python -m governed_analytics_agent.cli "$(Q)"
 
+api: ## Serve the governed agent as a REST API (http://localhost:8080/docs)
+	uv run python -m governed_analytics_agent.api
+
 test: ## Run the pytest suite
 	uv run pytest
 

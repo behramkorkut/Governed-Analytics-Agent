@@ -22,6 +22,6 @@ RUN chmod +x docker/entrypoint.sh
 ENV WAREHOUSE_DB=/app/data/warehouse.duckdb \
     DBT_PROFILES_DIR=/app/dbt/retail_dwh
 
-EXPOSE 8501
+EXPOSE 8501 8080
 
 ENTRYPOINT ["/app/docker/entrypoint.sh"]

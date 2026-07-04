@@ -17,7 +17,13 @@ fi
 # 2) Always (re)generate the semantic manifest the agent/catalog rely on.
 ( cd dbt/retail_dwh && DBT_PROFILES_DIR="$PWD" uv run dbt parse )
 
-# 3) Serve Streamlit on all interfaces so the host can reach it.
+# 3) Serve the requested interface: "api" -> REST API, default -> Streamlit.
+MODE="${1:-streamlit}"
+if [ "$MODE" = "api" ]; then
+  echo "[run] Starting the governed agent REST API on http://localhost:8080 (Swagger: /docs)"
+  exec uv run uvicorn governed_analytics_agent.api:app --host 0.0.0.0 --port 8080
+fi
+
 echo "[run] Starting Streamlit on http://localhost:8501"
 exec uv run streamlit run streamlit_app.py \
   --server.port 8501 \
