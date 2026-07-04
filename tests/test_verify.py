@@ -37,3 +37,33 @@ def test_french_decimal_total_is_recognised():
     rows = [{"gross_margin_rate": "0.42"}]
     # FR formatting: "0,42" should match 0.42 in the data.
     assert check_answer("La marge brute est de 0,42.", rows, None) == []
+
+
+def test_ratio_restated_as_percent_is_recognised():
+    rows = [
+        {"product__category": "Electronics", "gross_margin_rate": "0.2350480059"},
+        {"product__category": "Clothing", "gross_margin_rate": "0.3237678786"},
+    ]
+    answer = "Electronics margin is 23.5% while Clothing reaches 32.4%."
+    assert check_answer(answer, rows, None) == []
+
+
+def test_column_total_is_recognised():
+    # 480336.6 + 217780.98 + 151116.54 + 95278.97 = 944513.09
+    rows = [
+        {"c": "Electronics", "revenue": "480336.6"},
+        {"c": "Sports", "revenue": "217780.98"},
+        {"c": "Home", "revenue": "151116.54"},
+        {"c": "Clothing", "revenue": "95278.97"},
+    ]
+    assert check_answer("Total revenue reached $944,513.", rows, None) == []
+
+
+def test_wrong_percent_and_wrong_total_are_still_flagged():
+    rows = [
+        {"c": "A", "revenue": "100", "rate": "0.235"},
+        {"c": "B", "revenue": "300", "rate": "0.32"},
+    ]
+    flags = check_answer("The margin is 28.0% and the total is 950 \u20ac.", rows, None)
+    assert "28.0" in flags
+    assert any("950" in f for f in flags)

@@ -7,7 +7,9 @@ in the prose that matches nothing in the data is flagged.
 
 Deliberately conservative, to avoid crying wolf: it skips years and small counts
 (which aren't data claims), accepts rounding, and tolerates both EN ("1,234.5")
-and FR ("1 234,5") number formatting. It is an *advisory* signal surfaced in the
+and FR ("1 234,5") number formatting. Two legitimate *derivations* are also
+recognised: ratios restated as percentages (0.235 cited as "23.5 %") and column
+totals (the sum of a metric across the returned rows). It is an *advisory* signal surfaced in the
 UI, not a hard gate.
 """
 
@@ -59,6 +61,23 @@ def _is_data_claim(token: str, value: float) -> bool:
     return abs(value) >= 100
 
 
+def _column_totals(rows: list[dict]) -> set[float]:
+    """Per-column sums: models legitimately total a metric across the rows."""
+    if len(rows) < 2:
+        return set()
+    sums: dict[str, float] = {}
+    counts: dict[str, int] = {}
+    for row in rows:
+        for key, cell in row.items():
+            f = _to_float(cell)
+            if f is not None:
+                sums[key] = sums.get(key, 0.0) + f
+                counts[key] = counts.get(key, 0) + 1
+    # Only columns numeric on EVERY row -- a partially numeric column would
+    # produce a meaningless "total".
+    return {total for key, total in sums.items() if counts[key] == len(rows)}
+
+
 def supported_values(rows: list[dict], insights: Insights | None) -> set[float]:
     """Every number the answer is allowed to cite: row cells + computed facts,
     plus rounded variants so a rounded restatement still matches."""
@@ -68,6 +87,8 @@ def supported_values(rows: list[dict], insights: Insights | None) -> set[float]:
             f = _to_float(cell)
             if f is not None:
                 vals.add(f)
+    # Legitimate derivation #1: the total of a metric column.
+    vals |= _column_totals(rows)
     if insights is not None:
         if insights.total is not None:
             vals.add(insights.total)
@@ -82,6 +103,9 @@ def supported_values(rows: list[dict], insights: Insights | None) -> set[float]:
                 f = _to_float(insights.delta.get(key))
                 if f is not None:
                     vals.add(f)
+
+    # Legitimate derivation #2: ratios restated as percentages (0.235 -> 23.5).
+    vals |= {v * 100 for v in vals if 0 < abs(v) <= 1}
 
     rounded: set[float] = set()
     for v in vals:
