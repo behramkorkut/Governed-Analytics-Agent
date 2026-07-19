@@ -105,3 +105,19 @@ def test_ask_returns_answer_and_audit_trail(client):
 def test_ask_rejects_invalid_payload(client):
     assert client.post("/ask", json={"question": ""}).status_code == 422
     assert client.post("/ask", json={}).status_code == 422
+
+
+# --- Optional API token: /ask is gated when API_TOKEN is configured ---------
+@needs_warehouse
+def test_ask_requires_token_when_configured(client, monkeypatch):
+    monkeypatch.setattr(settings, "api_token", "test-secret")
+    payload = {"question": "Revenue by category?"}
+    assert client.post("/ask", json=payload).status_code == 401
+    assert client.post("/ask", json=payload, headers={"X-API-Key": "wrong"}).status_code == 401
+    resp = client.post("/ask", json=payload, headers={"X-API-Key": "test-secret"})
+    assert resp.status_code == 200
+
+
+def test_health_stays_open_when_token_configured(monkeypatch):
+    monkeypatch.setattr(settings, "api_token", "test-secret")
+    assert TestClient(app).get("/health").status_code == 200

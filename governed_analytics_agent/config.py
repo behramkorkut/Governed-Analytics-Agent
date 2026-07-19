@@ -26,6 +26,12 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-sonnet-4-6"
 
+    # --- REST API ----------------------------------------------------------
+    # Optional shared secret gating cost-incurring endpoints (POST /ask).
+    # Empty = open access (fine for local dev). SET it before any network
+    # exposure: every /ask call triggers billed LLM requests.
+    api_token: str = ""
+
     # --- Warehouse / dbt -------------------------------------------------
     warehouse_db: Path = PROJECT_ROOT / "data" / "warehouse.duckdb"
     dbt_project_dir: Path = PROJECT_ROOT / "dbt" / "retail_dwh"

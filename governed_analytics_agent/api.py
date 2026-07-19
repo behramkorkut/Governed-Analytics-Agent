@@ -12,6 +12,8 @@ Design notes:
 - The response exposes the whole audit trail (metrics chosen, generated SQL,
   rows, anti-fabrication flags, token cost): the API serves *trustworthy*
   answers, not just answers.
+- Cost control: /ask can be gated by an optional shared secret (API_TOKEN env
+  var, X-API-Key header), because every question triggers billed LLM calls.
 """
 
 from __future__ import annotations
@@ -21,7 +23,7 @@ from typing import Annotated, Any
 
 import anthropic
 import uvicorn
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from .agent import GovernedAnalyticsAgent
@@ -53,6 +55,17 @@ def get_agent() -> GovernedAnalyticsAgent:
 
 # FastAPI-recommended dependency style (and bugbear-friendly: no call in defaults).
 AgentDep = Annotated[GovernedAnalyticsAgent, Depends(get_agent)]
+
+
+def verify_token(x_api_key: Annotated[str | None, Header()] = None) -> None:
+    """Optional shared-secret gate for cost-incurring endpoints.
+
+    Each /ask call can trigger several billed LLM requests, so before the API
+    is exposed beyond localhost, set API_TOKEN and require it here. With no
+    token configured (local dev), the endpoint stays open.
+    """
+    if settings.api_token and x_api_key != settings.api_token:
+        raise HTTPException(status_code=401, detail="Missing or invalid X-API-Key header.")
 
 
 # ---------- Schemas ----------
@@ -109,7 +122,7 @@ def catalog(agent: AgentDep) -> dict[str, Any]:
 
 
 @app.post("/ask", response_model=AskResponse)
-def ask(req: AskRequest, agent: AgentDep) -> AskResponse:
+def ask(req: AskRequest, agent: AgentDep, _: Annotated[None, Depends(verify_token)]) -> AskResponse:
     try:
         res = agent.run(req.question)
     except anthropic.APIError as exc:

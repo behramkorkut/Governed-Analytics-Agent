@@ -194,7 +194,7 @@ make warehouse             # generate data -> dbt build -> semantic manifest
 make run                   # Streamlit dashboard at http://localhost:8501
 # or ask from the terminal:
 make agent Q="Revenue and gross margin by product category"
-make test                  # 20 tests
+make test                  # 66 tests
 ```
 
 Run `make help` to see every target.
@@ -209,6 +209,11 @@ make api
 curl -s -X POST localhost:8080/ask -H "Content-Type: application/json" \
   -d '{"question": "Revenue and gross margin by product category in 2026?"}'
 ```
+
+> **Cost control.** Every `/ask` call can trigger several billed LLM requests.
+> Before exposing the API beyond localhost, set `API_TOKEN` in `.env` — the
+> endpoint then requires an `X-API-Key` header (401 otherwise). With no token
+> set it stays open, for local development.
 
 Every response ships the **full audit trail**: the metrics the agent selected,
 the deterministic SQL, the returned rows, the anti-fabrication flags, and the
