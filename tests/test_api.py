@@ -53,7 +53,9 @@ def client():
     """TestClient with the LLM-mocked agent injected as a dependency."""
     from governed_analytics_agent.agent import GovernedAnalyticsAgent
     from governed_analytics_agent.catalog import load_catalog
+    from governed_analytics_agent.ratelimit import reset_rate_limiter
 
+    reset_rate_limiter()  # each test starts with a fresh daily budget
     agent = GovernedAnalyticsAgent(catalog=load_catalog(), client=_FakeClient())
     app.dependency_overrides[get_agent] = lambda: agent
     yield TestClient(app)
@@ -121,3 +123,31 @@ def test_ask_requires_token_when_configured(client, monkeypatch):
 def test_health_stays_open_when_token_configured(monkeypatch):
     monkeypatch.setattr(settings, "api_token", "test-secret")
     assert TestClient(app).get("/health").status_code == 200
+
+
+# --- Daily per-IP rate limit on the billed endpoint --------------------------
+@needs_warehouse
+def test_ask_rate_limited_per_day_per_ip(client, monkeypatch):
+    monkeypatch.setattr(settings, "rate_limit_per_day", 2)
+    payload = {"question": "Revenue by category?"}
+    assert client.post("/ask", json=payload).status_code == 200
+    assert client.post("/ask", json=payload).status_code == 200
+    resp = client.post("/ask", json=payload)
+    assert resp.status_code == 429
+    assert int(resp.headers["Retry-After"]) > 0
+
+
+@needs_warehouse
+def test_rate_limit_is_per_ip(client, monkeypatch):
+    monkeypatch.setattr(settings, "rate_limit_per_day", 1)
+    payload = {"question": "Revenue by category?"}
+    assert client.post("/ask", json=payload).status_code == 200
+    # A different client IP (via X-Forwarded-For) still has its own budget.
+    resp = client.post("/ask", json=payload, headers={"X-Forwarded-For": "203.0.113.7"})
+    assert resp.status_code == 200
+
+
+def test_health_is_not_rate_limited(client, monkeypatch):
+    monkeypatch.setattr(settings, "rate_limit_per_day", 1)
+    for _ in range(3):
+        assert client.get("/health").status_code == 200

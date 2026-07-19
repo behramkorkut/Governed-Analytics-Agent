@@ -210,10 +210,12 @@ curl -s -X POST localhost:8080/ask -H "Content-Type: application/json" \
   -d '{"question": "Revenue and gross margin by product category in 2026?"}'
 ```
 
-> **Cost control.** Every `/ask` call can trigger several billed LLM requests.
-> Before exposing the API beyond localhost, set `API_TOKEN` in `.env` — the
-> endpoint then requires an `X-API-Key` header (401 otherwise). With no token
-> set it stays open, for local development.
+> **Cost control.** Every `/ask` call can trigger several billed LLM requests,
+> so the billed surfaces are protected two ways: a **daily per-IP budget**
+> (`RATE_LIMIT_PER_DAY`, default **6 questions/day/IP** — 429 + `Retry-After`
+> on the API, a friendly notice in the dashboard chat; `0` disables it for
+> local dev) and, before exposing the API beyond localhost, an optional shared
+> secret (`API_TOKEN` → required `X-API-Key` header, 401 otherwise).
 
 Every response ships the **full audit trail**: the metrics the agent selected,
 the deterministic SQL, the returned rows, the anti-fabrication flags, and the
@@ -328,6 +330,25 @@ Every push runs the [CI pipeline](.github/workflows/ci.yml): it lints
 a *real* semantic layer — no API key needed, the LLM is mocked. Coverage is
 gated (**`--cov-fail-under`**). The same checks run locally via **pre-commit**
 (`make hooks`), so the tree stays green before it ever reaches GitHub.
+
+### Independent audit
+
+This repo went through an **independent audit** (code review + *real execution*:
+adversarial probes against the agent's security layers), followed by fixes
+verified one by one. **Final score: 9/10.**
+
+| Guarantee | Verified by execution |
+|---|---|
+| The agent can only *route* to catalog metrics — it never writes SQL (3-layer defence) | ✅ code + tests |
+| Filter values are safe at **both** layers above DuckDB: SQL-literal escaping *and* MetricFlow's Jinja template (template markers `{{`/`{%` rejected) | ✅ live probe: `{{ 7*7 }}` was evaluated → now rejected |
+| Malformed tool input → a tool error the model can self-correct, never a crashed run | ✅ dedicated tests |
+| Anti-fabrication audit covers **every** tool call of a run (multi-query comparisons) | ✅ dedicated tests |
+| Billed surfaces budgeted: **6 questions/day/IP** (429 + `Retry-After`), optional `X-API-Key` gate | ✅ 429/401/200 probes |
+| 47 dbt tests · 73 pytest · coverage 83 % (CI gate 78) · ruff + mypy clean | ✅ measured |
+
+> Known, documented limits (roadmap): no retry/backoff on transient LLM errors
+> yet, the eval suite has positive cases only, and small integers (< 100) are
+> outside the anti-fabrication scope by design (documented in `verify.py`).
 
 ---
 

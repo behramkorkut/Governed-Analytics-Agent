@@ -23,11 +23,12 @@ from typing import Annotated, Any
 
 import anthropic
 import uvicorn
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from .agent import GovernedAnalyticsAgent
 from .config import settings
+from .ratelimit import check_rate_limit
 
 app = FastAPI(
     title="Governed Analytics Agent API",
@@ -66,6 +67,28 @@ def verify_token(x_api_key: Annotated[str | None, Header()] = None) -> None:
     """
     if settings.api_token and x_api_key != settings.api_token:
         raise HTTPException(status_code=401, detail="Missing or invalid X-API-Key header.")
+
+
+def _client_ip(request: Request) -> str:
+    """Best-effort client IP: first X-Forwarded-For hop when proxied."""
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def rate_limit(request: Request) -> None:
+    """Daily per-IP budget on billed endpoints: 429 + Retry-After beyond it."""
+    allowed, retry_after = check_rate_limit(_client_ip(request), settings.rate_limit_per_day)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                f"Daily limit reached ({settings.rate_limit_per_day} questions/day/IP) — "
+                "each question triggers billed LLM calls."
+            ),
+            headers={"Retry-After": str(retry_after)},
+        )
 
 
 # ---------- Schemas ----------
@@ -122,7 +145,12 @@ def catalog(agent: AgentDep) -> dict[str, Any]:
 
 
 @app.post("/ask", response_model=AskResponse)
-def ask(req: AskRequest, agent: AgentDep, _: Annotated[None, Depends(verify_token)]) -> AskResponse:
+def ask(
+    req: AskRequest,
+    agent: AgentDep,
+    _token: Annotated[None, Depends(verify_token)],
+    _rate: Annotated[None, Depends(rate_limit)],
+) -> AskResponse:
     try:
         res = agent.run(req.question)
     except anthropic.APIError as exc:

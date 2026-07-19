@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     # exposure: every /ask call triggers billed LLM requests.
     api_token: str = ""
 
+    # --- Cost control ------------------------------------------------------
+    # Daily question budget per client IP on the billed surfaces (POST /ask,
+    # dashboard chat): beyond it, 429 + Retry-After. 0 disables (local dev).
+    rate_limit_per_day: int = 3
+
     # --- Warehouse / dbt -------------------------------------------------
     warehouse_db: Path = PROJECT_ROOT / "data" / "warehouse.duckdb"
     dbt_project_dir: Path = PROJECT_ROOT / "dbt" / "retail_dwh"

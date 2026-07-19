@@ -16,8 +16,9 @@ import streamlit as st
 from governed_analytics_agent import reporting
 from governed_analytics_agent.catalog import load_catalog
 from governed_analytics_agent.config import settings
+from governed_analytics_agent.ratelimit import check_rate_limit
 
-st.set_page_config(page_title="Governed Analytics", page_icon="📊", layout="wide")
+st.set_page_config(page_title="Governed Analytics", page_icon="", layout="wide")
 
 
 # --- First-boot bootstrap --------------------------------------------------
@@ -266,11 +267,29 @@ else:
 
     prompt = st.chat_input("Pose ta question sur les données retail…") or clicked
     if prompt:
-        st.session_state.history.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
-        with st.chat_message("assistant"):
-            with st.spinner("Querying the governed semantic layer…"):
-                res = get_agent().run(prompt)
-            render_answer(res)
-        st.session_state.history.append({"role": "assistant", "content": res.answer})
+        # Cost control: the public demo spends our Anthropic key, so each
+        # visitor IP gets a daily question budget (RATE_LIMIT_PER_DAY).
+        # Skipped when no forwarded IP is visible (local dev with your own key).
+        forwarded = st.context.headers.get("X-Forwarded-For", "")
+        visitor_ip = forwarded.split(",")[0].strip()
+        allowed, retry_h = (True, 0)
+        if visitor_ip:
+            allowed, retry_s = check_rate_limit(visitor_ip, settings.rate_limit_per_day)
+            retry_h = max(1, retry_s // 3600)
+        if not allowed:
+            st.warning(
+                f"Limite de démo atteinte : {settings.rate_limit_per_day} questions/jour/IP "
+                f"(chaque question déclenche des appels LLM facturés). Réessaie dans "
+                f"~{retry_h} h — ou clone le repo et utilise ta propre clé Anthropic "
+                "pour un usage illimité.",
+                icon="⏳",
+            )
+        else:
+            st.session_state.history.append({"role": "user", "content": prompt})
+            with st.chat_message("user"):
+                st.markdown(prompt)
+            with st.chat_message("assistant"):
+                with st.spinner("Querying the governed semantic layer…"):
+                    res = get_agent().run(prompt)
+                render_answer(res)
+            st.session_state.history.append({"role": "assistant", "content": res.answer})
