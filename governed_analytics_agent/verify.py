@@ -117,9 +117,7 @@ def _matches(value: float, supported: set[float]) -> bool:
     return any(abs(value - s) <= max(_ABS_TOL, _REL_TOL * abs(s)) for s in supported)
 
 
-def check_answer(answer: str, rows: list[dict], insights: Insights | None) -> list[str]:
-    """Return the figures in `answer` not backed by the data (empty == clean)."""
-    supported = supported_values(rows, insights)
+def _flag_unsupported(answer: str, supported: set[float]) -> list[str]:
     flagged: list[str] = []
     for token in _NUMBER_RE.findall(answer):
         cands = _candidates(token)
@@ -128,3 +126,24 @@ def check_answer(answer: str, rows: list[dict], insights: Insights | None) -> li
         if not any(_matches(c, supported) for c in cands):
             flagged.append(token.strip())
     return flagged
+
+
+def check_answer(answer: str, rows: list[dict], insights: Insights | None) -> list[str]:
+    """Return the figures in `answer` not backed by the data (empty == clean)."""
+    return _flag_unsupported(answer, supported_values(rows, insights))
+
+
+def check_answer_multi(
+    answer: str, evidence: list[tuple[list[dict], Insights | None]]
+) -> list[str]:
+    """Multi-query variant: a figure is backed if ANY tool call supports it.
+
+    The agent may issue several governed queries per question (comparisons);
+    auditing against only the *last* call would falsely flag figures that
+    trace back to an earlier one. Each call's supported set is computed
+    separately (so column totals stay meaningful), then unioned.
+    """
+    supported: set[float] = set()
+    for rows, insights in evidence:
+        supported |= supported_values(rows, insights)
+    return _flag_unsupported(answer, supported)

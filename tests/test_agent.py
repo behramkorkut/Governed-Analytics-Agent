@@ -84,3 +84,70 @@ def test_agent_loop_executes_and_answers():
     assert res.answer == "Electronics leads."
     assert res.query is not None
     assert len(res.rows) == 4  # four product categories
+
+
+# --- Malformed tool input: GuardrailError, never TypeError/KeyError ----------
+def test_tool_input_rejects_malformed_filter():
+    from governed_analytics_agent.guardrails import GuardrailError
+
+    with pytest.raises(GuardrailError):  # missing required 'dimension' key
+        _tool_input_to_query({"metrics": ["revenue"], "filters": [{"operator": "=", "value": "x"}]})
+
+
+def test_tool_input_rejects_wrong_types():
+    from governed_analytics_agent.guardrails import GuardrailError
+
+    with pytest.raises(GuardrailError):  # limit as string
+        _tool_input_to_query({"metrics": ["revenue"], "limit": "50"})
+    with pytest.raises(GuardrailError):  # metrics not a list
+        _tool_input_to_query({"metrics": 42})
+    with pytest.raises(GuardrailError):  # non-string metric entry
+        _tool_input_to_query({"metrics": ["revenue", 7]})
+
+
+def test_tool_input_coerces_bare_string_metrics():
+    q = _tool_input_to_query({"metrics": "revenue"})
+    assert q.metrics == ["revenue"]
+
+
+def test_execute_tool_returns_tool_error_on_malformed_input():
+    """A malformed tool call must come back as an error the model can
+    self-correct on — it must never raise and kill the whole run."""
+    from governed_analytics_agent.agent import AgentResult, GovernedAnalyticsAgent
+
+    agent = GovernedAnalyticsAgent(catalog=_catalog(), client=_FakeClient())
+    res = AgentResult(answer="")
+    content, is_error = agent._execute_tool(
+        {"metrics": ["revenue"], "filters": [{"operator": "="}]}, res
+    )
+    assert is_error is True
+    assert "Guardrail error" in content or "Malformed" in content
+
+
+# --- P4: every successful tool call feeds the anti-fabrication audit --------
+def test_execute_tool_accumulates_evidence(monkeypatch):
+    from governed_analytics_agent import agent as agent_mod
+    from governed_analytics_agent.agent import AgentResult, GovernedAnalyticsAgent
+
+    agent = GovernedAnalyticsAgent(catalog=_catalog(), client=_FakeClient())
+    monkeypatch.setattr(agent_mod.sl, "run_query", lambda q: [{"revenue": "500"}])
+    res = AgentResult(answer="")
+    for _ in range(2):
+        _, is_error = agent._execute_tool({"metrics": ["revenue"]}, res)
+        assert is_error is False
+    assert len(res.evidence) == 2
+    assert res.evidence[0][0] == [{"revenue": "500"}]
+
+
+def test_finalize_audits_against_all_tool_calls():
+    """A comparison answer citing an EARLIER call's figures must stay clean."""
+    from governed_analytics_agent.agent import AgentResult, GovernedAnalyticsAgent
+
+    agent = GovernedAnalyticsAgent(catalog=_catalog(), client=_FakeClient())
+    res = AgentResult(answer="France made 500 € while Germany made 800 €.")
+    res.evidence = [
+        ([{"customer__country": "France", "revenue": "500"}], None),
+        ([{"customer__country": "Germany", "revenue": "800"}], None),
+    ]
+    out = agent._finalize(res, 0.0)
+    assert out.fabrication_flags == []

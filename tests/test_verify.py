@@ -2,7 +2,7 @@
 
 from governed_analytics_agent.guardrails import MetricQuery
 from governed_analytics_agent.insights import compute
-from governed_analytics_agent.verify import check_answer
+from governed_analytics_agent.verify import check_answer, check_answer_multi
 
 _ROWS = [
     {"product__category": "Electronics", "revenue": "100"},
@@ -67,3 +67,22 @@ def test_wrong_percent_and_wrong_total_are_still_flagged():
     flags = check_answer("The margin is 28.0% and the total is 950 \u20ac.", rows, None)
     assert "28.0" in flags
     assert any("950" in f for f in flags)
+
+
+# --- Multi-query audit (P4): evidence from EVERY tool call counts -----------
+def test_multi_query_answer_is_audited_against_all_calls():
+    """A comparison answer cites figures from several governed queries: a
+    figure backed by an EARLIER call must not be flagged as fabricated."""
+    call_1 = ([{"customer__country": "France", "revenue": "500"}], None)
+    call_2 = ([{"customer__country": "Germany", "revenue": "800"}], None)
+    answer = "France made 500 € while Germany made 800 €."
+    # Against the last call only, 500 would be (wrongly) flagged:
+    assert "500" in check_answer(answer, *call_2)
+    # Against all calls, the answer is fully backed:
+    assert check_answer_multi(answer, [call_1, call_2]) == []
+
+
+def test_multi_query_still_flags_truly_fabricated_figures():
+    call_1 = ([{"revenue": "500"}], None)
+    call_2 = ([{"revenue": "800"}], None)
+    assert "999" in check_answer_multi("Revenue was 999 €.", [call_1, call_2])

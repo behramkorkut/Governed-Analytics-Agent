@@ -25,7 +25,7 @@ from . import semantic_layer as sl
 from . import verify
 from .catalog import Catalog, load_catalog
 from .config import settings
-from .guardrails import Filter, GuardrailError, MetricQuery, validate
+from .guardrails import Filter, GuardrailError, MetricQuery, as_str_list, validate
 from .pricing import Usage
 
 TOOL_NAME = "query_semantic_layer"
@@ -88,9 +88,14 @@ class AgentResult:
     # Deterministic facts computed from the rows (shares, deltas, coverage),
     # so the model phrases pre-computed numbers instead of estimating them.
     insights: ins.Insights | None = None
-    # Figures cited in the answer that are NOT backed by the returned data.
-    # Empty == every number traces back to the rows/insights (anti-fabrication).
+    # Figures cited in the answer that are NOT backed by ANY tool call of the
+    # run. Empty == every number traces back to some rows/insights the model
+    # actually saw (anti-fabrication).
     fabrication_flags: list[str] = field(default_factory=list)
+    # Audit evidence: (rows, insights) of EVERY successful tool call, so the
+    # anti-fabrication check covers multi-query answers (comparisons), not
+    # just the last query.
+    evidence: list[tuple[list[dict], ins.Insights | None]] = field(default_factory=list)
     # Observability: what the run cost and how long it took.
     usage: Usage = field(default_factory=Usage)
     model: str = ""
@@ -178,21 +183,42 @@ def build_tool(catalog: Catalog) -> dict:
 
 
 def _tool_input_to_query(data: dict) -> MetricQuery:
-    filters = [
-        Filter(
-            dimension=f["dimension"],
-            operator=f["operator"],
-            value=f["value"],
-            grain=f.get("grain"),
+    """Build a MetricQuery from raw tool input — defensively.
+
+    The model usually follows the tool schema, but every structural problem
+    (missing key, wrong type) must surface as a GuardrailError it can
+    self-correct on — never as an unhandled TypeError/KeyError that kills
+    the whole run.
+    """
+    if not isinstance(data, dict):
+        raise GuardrailError(f"Tool input must be an object, got {data!r}.")
+    raw_filters = data.get("filters") or []
+    if not isinstance(raw_filters, list):
+        raise GuardrailError(f"'filters' must be a list, got {raw_filters!r}.")
+    filters = []
+    for f in raw_filters:
+        if not isinstance(f, dict):
+            raise GuardrailError(f"Each filter must be an object, got {f!r}.")
+        missing = [k for k in ("dimension", "operator", "value") if k not in f]
+        if missing:
+            raise GuardrailError(f"Filter is missing required key(s): {missing}.")
+        filters.append(
+            Filter(
+                dimension=str(f["dimension"]),
+                operator=str(f["operator"]),
+                value=f["value"],
+                grain=f.get("grain"),
+            )
         )
-        for f in (data.get("filters") or [])
-    ]
+    limit = data.get("limit")
+    if limit is not None and (isinstance(limit, bool) or not isinstance(limit, int)):
+        raise GuardrailError(f"'limit' must be an integer, got {limit!r}.")
     return MetricQuery(
-        metrics=list(data.get("metrics", [])),
-        group_by=list(data.get("group_by", []) or []),
-        order_by=list(data.get("order_by", []) or []),
+        metrics=as_str_list(data.get("metrics"), "metrics"),
+        group_by=as_str_list(data.get("group_by"), "group_by"),
+        order_by=as_str_list(data.get("order_by"), "order_by"),
         filters=filters,
-        limit=data.get("limit"),
+        limit=limit,
     )
 
 
@@ -264,8 +290,9 @@ class GovernedAnalyticsAgent:
                 result.sql = sl.explain_sql(result.query)
             except Exception:  # noqa: BLE001 — transparency is best-effort, never fatal
                 result.sql = ""
-        # Audit: which cited figures (if any) aren't backed by the data.
-        result.fabrication_flags = verify.check_answer(result.answer, result.rows, result.insights)
+        # Audit: which cited figures (if any) aren't backed by ANY tool call
+        # of the run — a comparison answer legitimately cites several queries.
+        result.fabrication_flags = verify.check_answer_multi(result.answer, result.evidence)
         result.latency_s = round(time.perf_counter() - started, 3)
         return result
 
@@ -276,6 +303,11 @@ class GovernedAnalyticsAgent:
         except GuardrailError as e:
             result.steps.append(f"REJECTED {data} -> {e}")
             return f"Guardrail error: {e}", True
+        except (TypeError, KeyError, AttributeError) as e:  # belt and braces
+            # Malformed tool input must become a tool error the model can
+            # self-correct on — never an exception that kills the whole run.
+            result.steps.append(f"MALFORMED {data} -> {e}")
+            return f"Malformed tool input: {e}", True
 
         try:
             rows = sl.run_query(query)
@@ -289,6 +321,9 @@ class GovernedAnalyticsAgent:
         result.rows = rows
         result.sql = ""
         result.insights = ins.compute(rows, query)
+        # Every successful call feeds the anti-fabrication audit (P4): a
+        # multi-query comparison answer may cite figures from any of them.
+        result.evidence.append((rows, result.insights))
         result.steps.append(
             f"OK metrics={query.metrics} group_by={query.group_by} -> {len(rows)} rows"
         )
