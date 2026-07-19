@@ -86,3 +86,50 @@ def test_valid_filters_pass():
         ],
     )
     validate(q, _catalog())
+
+
+# --- Template-injection regression (MetricFlow renders where-clauses as Jinja) ---
+def test_filter_jinja_markers_rejected():
+    """A value like '{{ 7*7 }}' would be *evaluated* server-side by MetricFlow's
+    Jinja rendering (template injection / DoS via `{{ range(10**9)|list }}`), so
+    template markers are refused outright — quote-escaping only covers SQL."""
+    for payload in ("{{ 7*7 }}", "{{ range(10**9)|list }}", "{% x %}", "a}}b"):
+        with pytest.raises(GuardrailError):
+            validate(
+                MetricQuery(
+                    metrics=["revenue"], filters=[Filter("customer__country", "=", payload)]
+                ),
+                _catalog(),
+            )
+
+
+def test_filter_jinja_marker_inside_in_list_rejected():
+    with pytest.raises(GuardrailError):
+        validate(
+            MetricQuery(
+                metrics=["revenue"],
+                filters=[Filter("customer__country", "in", ["France", "{{ 1+1 }}"])],
+            ),
+            _catalog(),
+        )
+
+
+# --- Malformed input: GuardrailError, never TypeError/KeyError --------------
+def test_limit_wrong_type_raises_guardrail_not_typeerror():
+    with pytest.raises(GuardrailError):
+        validate(MetricQuery(metrics=["revenue"], limit="50"), _catalog())
+
+
+def test_metrics_wrong_type_raises_guardrail_not_typeerror():
+    with pytest.raises(GuardrailError):
+        validate(MetricQuery(metrics="revenue"), _catalog())
+
+
+def test_list_value_with_scalar_operator_rejected():
+    with pytest.raises(GuardrailError):
+        validate(
+            MetricQuery(
+                metrics=["revenue"], filters=[Filter("customer__country", "=", ["France"])]
+            ),
+            _catalog(),
+        )
