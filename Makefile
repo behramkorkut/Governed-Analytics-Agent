@@ -8,8 +8,9 @@ export DBT_PROFILES_DIR := $(ROOT)/dbt/retail_dwh
 DBT  := uv run dbt
 PROJ := --project-dir dbt/retail_dwh --profiles-dir dbt/retail_dwh
 
-.PHONY: help setup data build parse warehouse run agent test cov eval \
-        format lint typecheck check hooks docker-up docker-down clean
+.PHONY: help setup data stream build parse build-prod parse-prod warehouse run \
+        agent test cov eval format lint typecheck check hooks docker-up \
+        docker-down clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -22,11 +23,25 @@ data: ## Generate synthetic source data + load the Bronze layer
 	uv run python scripts/generate_raw_data.py
 	uv run python scripts/load_bronze.py
 
+stream: ## Stream live order events into ORDER_EVENTS (T=duckdb|snowflake, SECS=20)
+	uv run python scripts/stream_orders.py --target $(or $(T),duckdb) \
+		--rate $(or $(RATE),5) --duration $(or $(SECS),20)
+
 build: ## Run dbt models (Silver + Gold) and data tests
 	$(DBT) build $(PROJ)
 
-parse: ## Generate the MetricFlow semantic manifest
+parse: ## Generate the MetricFlow semantic manifest (local DuckDB target)
 	$(DBT) parse $(PROJ)
+
+# ⚠️ The semantic manifest is TARGET-SPECIFIC: it hard-codes the warehouse
+# catalog. After running anything with DBT_TARGET=prod, re-run `make parse`
+# before using the local agent/tests, or MetricFlow will look for the Snowflake
+# catalog against DuckDB ("Catalog RETAIL_DWH does not exist").
+build-prod: ## Build Silver+Gold on Snowflake (DBT_TARGET=prod)
+	DBT_TARGET=prod $(DBT) build $(PROJ)
+
+parse-prod: ## Generate the semantic manifest for the Snowflake target
+	DBT_TARGET=prod $(DBT) parse $(PROJ)
 
 warehouse: data build parse ## Full pipeline: data -> dbt -> semantic manifest
 

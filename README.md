@@ -199,6 +199,57 @@ make test                  # 66 tests
 
 Run `make help` to see every target.
 
+### Running on Snowflake (prod target)
+
+The **exact same dbt models and semantic layer** run on Snowflake — the only
+DuckDB↔Snowflake dialect gaps (date spine, date formatting) are isolated in
+[`macros/portability.sql`](dbt/retail_dwh/macros/portability.sql). Local and CI
+stay 100% offline on DuckDB; Snowflake is opt-in via `DBT_TARGET=prod`.
+
+```bash
+uv sync --extra snowflake              # dbt-snowflake + connector (optional deps)
+cp .env.example .env                   # fill in the SNOWFLAKE_* vars
+
+python scripts/generate_raw_data.py    # synthetic source CSVs
+python scripts/load_bronze_snowflake.py  # land Bronze into Snowflake
+
+DBT_TARGET=prod uv run dbt build --project-dir dbt/retail_dwh --profiles-dir dbt/retail_dwh
+DBT_TARGET=prod uv run dbt parse --project-dir dbt/retail_dwh --profiles-dir dbt/retail_dwh
+```
+
+Handy targets: `make build-prod` / `make parse-prod` do the same against Snowflake.
+
+> **⚠️ The semantic manifest is target-specific.** `dbt parse` bakes the warehouse
+> catalog into `target/semantic_manifest.json`, which MetricFlow then queries. So
+> after any `DBT_TARGET=prod` run, re-run **`make parse`** before using the local
+> agent, dashboard or test suite — otherwise MetricFlow looks for the Snowflake
+> catalog against DuckDB and fails with *"Catalog RETAIL_DWH does not exist"*.
+
+> **Free-trial cost discipline:** use an **XS** warehouse with `AUTO_SUSPEND = 60`,
+> and suspend it when idle — the same models cost near-zero on DuckDB while you
+> iterate, so only promote to Snowflake for the real run.
+
+### Near-real-time lane (streaming)
+
+The batch pipeline is day-grain. A second, **timestamped** lane streams order-line
+events into a landing table `ORDER_EVENTS`, so metrics can answer *"revenue in the
+last 15 minutes"*. In production that table is fed by **Snowpipe Streaming**; here
+a bounded micro-batch producer stands in (same contract, no extra infra):
+
+```bash
+make stream                          # 5 events/s for 20s into DuckDB
+make stream T=snowflake SECS=60      # same producer, Snowflake target
+```
+
+Event generation lives in [`streaming.py`](governed_analytics_agent/streaming.py)
+— pure and seeded, so it is unit-tested; the I/O runner is
+[`scripts/stream_orders.py`](scripts/stream_orders.py). Streaming ids start at
+1,000,000 so live events never collide with the historical batch load. The
+duration is always bounded — cost discipline on the free trial.
+
+*Next (Phase 2): Dynamic Tables (`TARGET_LAG`) on Snowflake / incremental models
+on DuckDB refresh Silver+Gold from this landing table, plus a freshness SLA.*
+
 ### Serving the agent as a REST API
 
 The same governed loop is exposed as a **FastAPI** service — auto-generated

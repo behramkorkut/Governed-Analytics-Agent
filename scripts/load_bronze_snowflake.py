@@ -73,7 +73,7 @@ def main() -> None:
                 raise FileNotFoundError(
                     f"Missing landing file: {csv_path} (run generate_raw_data.py first)"
                 )
-            dtype = {col: str for col in RAW_AS_TEXT.get(name, [])}
+            dtype = dict.fromkeys(RAW_AS_TEXT.get(name, []), str)
             df = pd.read_csv(csv_path, dtype=dtype)
             # UPPERCASE, unquoted -> standard Snowflake identifiers.
             df.columns = [c.upper() for c in df.columns]
