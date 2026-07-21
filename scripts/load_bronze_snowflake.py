@@ -41,8 +41,7 @@ def main() -> None:
         from snowflake.connector.pandas_tools import write_pandas
     except ImportError as exc:  # pragma: no cover - optional dependency
         raise SystemExit(
-            "snowflake-connector-python[pandas] is not installed. "
-            "Run: uv sync --extra snowflake"
+            "snowflake-connector-python[pandas] is not installed. Run: uv sync --extra snowflake"
         ) from exc
 
     required = ["SNOWFLAKE_ACCOUNT", "SNOWFLAKE_USER", "SNOWFLAKE_PASSWORD"]

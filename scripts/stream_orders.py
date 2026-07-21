@@ -6,13 +6,18 @@ seconds (bounded on purpose — cost discipline on the Snowflake free trial), in
 Streaming; here a micro-batch INSERT stands in. Downstream Dynamic Tables /
 incremental models (Phase 2) refresh Silver/Gold with a small target lag.
 
+Run it as a MODULE (`-m`) so the project root lands on sys.path and the
+`governed_analytics_agent` package is importable — the project is not pip-installed.
+
 Examples
 --------
     # local DuckDB warehouse (offline, CI-safe)
-    uv run python scripts/stream_orders.py --target duckdb --rate 5 --duration 20
+    uv run python -m scripts.stream_orders --target duckdb --rate 5 --duration 20
 
     # Snowflake (needs: set -a && source .env && set +a ; uv sync --extra snowflake)
-    uv run python scripts/stream_orders.py --target snowflake --rate 5 --duration 60
+    uv run python -m scripts.stream_orders --target snowflake --rate 5 --duration 60
+
+    # or simply:  make stream            /  make stream T=snowflake SECS=30
 """
 
 from __future__ import annotations
@@ -96,9 +101,7 @@ def write_snowflake(batches: Iterable[list[OrderEvent]]) -> int:
     return total
 
 
-def _stream_batches(
-    rate: int, duration: int, seed: int
-) -> Iterable[list[OrderEvent]]:
+def _stream_batches(rate: int, duration: int, seed: int) -> Iterable[list[OrderEvent]]:
     """Yield one ~1-second micro-batch of `rate` events, `duration` times."""
     rng = random.Random(seed)
     prices = load_product_prices(PRODUCTS_CSV)
@@ -122,10 +125,7 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
-    print(
-        f"Streaming ~{args.rate} events/s for {args.duration}s "
-        f"into {args.target} (ORDER_EVENTS)"
-    )
+    print(f"Streaming ~{args.rate} events/s for {args.duration}s into {args.target} (ORDER_EVENTS)")
     batches = _stream_batches(args.rate, args.duration, args.seed)
     writer = write_snowflake if args.target == "snowflake" else write_duckdb
     total = writer(batches)

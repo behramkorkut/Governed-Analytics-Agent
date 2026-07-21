@@ -24,7 +24,7 @@ data: ## Generate synthetic source data + load the Bronze layer
 	uv run python scripts/load_bronze.py
 
 stream: ## Stream live order events into ORDER_EVENTS (T=duckdb|snowflake, SECS=20)
-	uv run python scripts/stream_orders.py --target $(or $(T),duckdb) \
+	uv run python -m scripts.stream_orders --target $(or $(T),duckdb) \
 		--rate $(or $(RATE),5) --duration $(or $(SECS),20)
 
 build: ## Run dbt models (Silver + Gold) and data tests
