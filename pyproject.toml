@@ -18,6 +18,15 @@ dependencies = [
     "uvicorn[standard]>=0.49.0",
 ]
 
+# Optional: the Snowflake (prod) path. Kept out of the core deps so local + CI
+# stay light and fully offline on DuckDB. Install with:  uv sync --extra snowflake
+[project.optional-dependencies]
+snowflake = [
+    "dbt-snowflake>=1.8",
+    # [pandas] pulls pyarrow, required by write_pandas in load_bronze_snowflake.py
+    "snowflake-connector-python[pandas]>=3.12",
+]
+
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
