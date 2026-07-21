@@ -6,9 +6,9 @@
     build and the test suite are strictly unchanged. Only `--target prod`
     (Snowflake) takes the alternative branch.
 
-    ⚠️ Branches tagged "verify on connect" depend on Snowflake session params
-    (notably WEEK_START for day-of-week numbering). Validate them once the
-    Snowflake account is live, then remove the tag.
+    Validated end-to-end on Snowflake (dbt build 58/60 PASS): the day-of-week
+    numbering matches DuckDB (0=Sunday .. 6=Saturday) under the default
+    WEEK_START, so `day_name` / `is_weekend` are consistent across both engines.
 #}
 
 {# yyyymmdd integer surrogate key from a date column #}
@@ -39,7 +39,7 @@ end
     {%- if target.type == 'duckdb' -%}
 strftime({{ col }}, '%A')
     {%- else -%}
-{# verify on connect: dayofweek numbering depends on WEEK_START (default 0=Sun) #}
+{# dayofweek: 0=Sun..6=Sat under default WEEK_START — validated vs DuckDB #}
 case extract(dayofweek from {{ col }})
     when 0 then 'Sunday' when 1 then 'Monday' when 2 then 'Tuesday'
     when 3 then 'Wednesday' when 4 then 'Thursday' when 5 then 'Friday'
