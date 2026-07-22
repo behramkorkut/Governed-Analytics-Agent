@@ -156,6 +156,25 @@ The **15 governed metrics**: `revenue`, `cost`, `gross_profit`,
 > customers buy more than once?"* — turned into a governed, deterministic metric
 > the agent can now route to.
 
+### Design note — why MetricFlow, not Snowflake Semantic Views?
+
+Both are semantic layers built on the same principle (*define each metric once,
+let consumers route to it, never write raw SQL*) — and they are **competing, not
+complementary**: there is no clean transpiler from one to the other, so adopting
+both means maintaining two copies of every definition. The choice was deliberate:
+
+| | dbt **MetricFlow** (this project) | Snowflake **Semantic Views** (Cortex Analyst) |
+|---|---|---|
+| Portability | Multi-engine (DuckDB **and** Snowflake) | Snowflake-only |
+| Lock-in | Open-source, vendor-neutral | Native to the platform |
+| Trade-off | One definition runs everywhere; local + CI stay offline | Native performance & simplicity, at the cost of portability |
+
+MetricFlow keeps the definitions engine-agnostic, so the *same* metrics power the
+DuckDB CI runs and the Snowflake deployment — which is exactly the single-source
+guarantee this project is about. (A telling anecdote: pointed at the raw Gold
+tables, Snowflake's own **Cortex Analyst** agent first looked for a semantic
+layer before touching SQL — the industry-native version of this pattern.)
+
 ---
 
 ## The governed agent (defence in depth)
@@ -283,6 +302,17 @@ make stream T=snowflake SECS=60            # events land; Snowflake refreshes wi
 > **⚠️ Dynamic Table cost:** an ACTIVE Dynamic Table resumes the warehouse every
 > `TARGET_LAG` to refresh — even with no new events. Suspend it when not demoing:
 > `ALTER DYNAMIC TABLE RETAIL_DWH.GOLD.FACT_SALES_LIVE SUSPEND;` (RESUME before a demo).
+
+The Dynamic Table on Snowflake, with its lineage and lag metrics — same model,
+`TARGET_LAG = 1 min`, incremental refresh:
+
+![FACT_SALES_LIVE as a Snowflake Dynamic Table](screenshots/snowflake_dynamic_table.png)
+
+<!-- Optional: also drop the Streamlit "Live" panel screenshot at
+     screenshots/live_dashboard.png and uncomment the line below.
+![Live panel in the dashboard](screenshots/live_dashboard.png)
+-->
+
 
 ### Serving the agent as a REST API
 
