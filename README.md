@@ -5,7 +5,9 @@
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
 ![uv](https://img.shields.io/badge/packaging-uv-DE5FE9?logo=astral&logoColor=white)
 ![dbt](https://img.shields.io/badge/dbt-1.11-FF694B?logo=dbt&logoColor=white)
-![DuckDB](https://img.shields.io/badge/DuckDB-warehouse-FFF000?logo=duckdb&logoColor=black)
+![DuckDB](https://img.shields.io/badge/DuckDB-local%20%2F%20CI-FFF000?logo=duckdb&logoColor=black)
+![Snowflake](https://img.shields.io/badge/Snowflake-prod%20%2B%20Dynamic%20Tables-29B5E8?logo=snowflake&logoColor=white)
+![Streaming](https://img.shields.io/badge/near--real--time-TARGET__LAG%201min-1F6FEB)
 ![MetricFlow](https://img.shields.io/badge/MetricFlow-semantic%20layer-30A46C)
 ![Claude](https://img.shields.io/badge/Claude-tool%20use-D97757?logo=anthropic&logoColor=white)
 ![Streamlit](https://img.shields.io/badge/Streamlit-dashboard-FF4B4B?logo=streamlit&logoColor=white)
@@ -221,9 +223,11 @@ Handy targets: `make build-prod` / `make parse-prod` do the same against Snowfla
 
 > **⚠️ The semantic manifest is target-specific.** `dbt parse` bakes the warehouse
 > catalog into `target/semantic_manifest.json`, which MetricFlow then queries. So
-> after any `DBT_TARGET=prod` run, re-run **`make parse`** before using the local
-> agent, dashboard or test suite — otherwise MetricFlow looks for the Snowflake
-> catalog against DuckDB and fails with *"Catalog RETAIL_DWH does not exist"*.
+> the `make build-prod` / `make parse-prod` targets **auto-restore the local
+> manifest** (they re-run `make parse` at the end). Only a *raw*
+> `DBT_TARGET=prod dbt …` run needs a manual `make parse` afterwards — otherwise
+> MetricFlow looks for the Snowflake catalog against DuckDB and fails with
+> *"Catalog RETAIL_DWH does not exist"*.
 
 > **Free-trial cost discipline:** use an **XS** warehouse with `AUTO_SUSPEND = 60`,
 > and suspend it when idle — the same models cost near-zero on DuckDB while you
@@ -243,12 +247,42 @@ make stream T=snowflake SECS=60      # same producer, Snowflake target
 
 Event generation lives in [`streaming.py`](governed_analytics_agent/streaming.py)
 — pure and seeded, so it is unit-tested; the I/O runner is
-[`scripts/stream_orders.py`](scripts/stream_orders.py). Streaming ids start at
-1,000,000 so live events never collide with the historical batch load. The
-duration is always bounded — cost discipline on the free trial.
+[`scripts/stream_orders.py`](scripts/stream_orders.py). `event_id` is a fresh
+uuid4 and each run continues the id sequence from the max already loaded, so
+events never collide across runs (a bug the `unique` data test caught during
+development). The duration is always bounded — cost discipline on the free trial.
 
-*Next (Phase 2): Dynamic Tables (`TARGET_LAG`) on Snowflake / incremental models
-on DuckDB refresh Silver+Gold from this landing table, plus a freshness SLA.*
+**From landing to fresh metrics.** `ORDER_EVENTS` flows through two streaming
+models that mirror the batch lane but refresh incrementally:
+
+| Model | DuckDB (local/CI) | Snowflake (prod) |
+|---|---|---|
+| `stg_order_events` (Silver) | view | view |
+| `fact_sales_live` (Gold) | **incremental** | **Dynamic Table, `TARGET_LAG = 1 min`** |
+
+Same SQL, one `config()` branching on `target.type`. On Snowflake the Dynamic
+Table keeps itself refreshed (`REFRESH_MODE = INCREMENTAL`, `SCHEDULING_STATE =
+ACTIVE`) — you declare the freshness you want, Snowflake figures out how. A
+`sales_live` semantic model (minute grain) reuses the **same** customer/product/
+store dimensions, exposing `revenue_live` / `orders_live` / `average_order_value_live`
+— the batch metric definitions, only fresher. The dashboard's **Live** panel and
+the governed agent both read them; nothing writes SQL by hand.
+
+**Freshness as an SLA.** [`rt_freshness`](dbt/retail_dwh/models/streaming/rt_freshness.sql)
+is a *view* (evaluated at query time, so it answers "how fresh *now*", not "at the
+last refresh"), surfaced by [`freshness.py`](governed_analytics_agent/freshness.py)
+and gated by a dbt test ([`assert_rt_freshness_within_sla`](dbt/retail_dwh/tests/assert_rt_freshness_within_sla.sql),
+`severity: warn`). The dashboard shows a 🟢/🔴 badge against the SLA.
+
+```bash
+# Snowflake live demo
+DBT_TARGET=prod make build-prod            # creates the Dynamic Table
+make stream T=snowflake SECS=60            # events land; Snowflake refreshes within 1 min
+```
+
+> **⚠️ Dynamic Table cost:** an ACTIVE Dynamic Table resumes the warehouse every
+> `TARGET_LAG` to refresh — even with no new events. Suspend it when not demoing:
+> `ALTER DYNAMIC TABLE RETAIL_DWH.GOLD.FACT_SALES_LIVE SUSPEND;` (RESUME before a demo).
 
 ### Serving the agent as a REST API
 

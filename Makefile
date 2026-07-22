@@ -34,14 +34,17 @@ parse: ## Generate the MetricFlow semantic manifest (local DuckDB target)
 	$(DBT) parse $(PROJ)
 
 # ⚠️ The semantic manifest is TARGET-SPECIFIC: it hard-codes the warehouse
-# catalog. After running anything with DBT_TARGET=prod, re-run `make parse`
-# before using the local agent/tests, or MetricFlow will look for the Snowflake
-# catalog against DuckDB ("Catalog RETAIL_DWH does not exist").
-build-prod: ## Build Silver+Gold on Snowflake (DBT_TARGET=prod)
+# catalog. The prod targets below therefore ALWAYS re-parse for DuckDB at the end
+# (via `make parse`), so you return to a clean local state and the agent/tests
+# never hit "Catalog RETAIL_DWH does not exist" after a Snowflake round-trip.
+build-prod: ## Build Silver+Gold on Snowflake (then restore the local manifest)
 	DBT_TARGET=prod $(DBT) build $(PROJ)
+	@$(MAKE) --no-print-directory parse
 
-parse-prod: ## Generate the semantic manifest for the Snowflake target
+parse-prod: ## Parse the manifest for Snowflake (then restore the local manifest)
 	DBT_TARGET=prod $(DBT) parse $(PROJ)
+	@echo "→ restoring the local (DuckDB) semantic manifest"
+	@$(MAKE) --no-print-directory parse
 
 warehouse: data build parse ## Full pipeline: data -> dbt -> semantic manifest
 

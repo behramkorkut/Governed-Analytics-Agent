@@ -16,7 +16,11 @@ import streamlit as st
 from governed_analytics_agent import reporting
 from governed_analytics_agent.catalog import load_catalog
 from governed_analytics_agent.config import settings
+from governed_analytics_agent.freshness import read_freshness
 from governed_analytics_agent.ratelimit import check_rate_limit
+
+# Freshness SLA for the near-real-time lane (matches the dbt test default).
+RT_SLA_SECONDS = 120
 
 st.set_page_config(page_title="Governed Analytics", page_icon="", layout="wide")
 
@@ -52,7 +56,9 @@ def _ensure_warehouse() -> bool:
     project = str(settings.dbt_project_dir)
     steps = [
         [sys.executable, str(PROJECT_ROOT / "scripts" / "generate_raw_data.py")],
-        [sys.executable, str(PROJECT_ROOT / "scripts" / "load_bronze.py")],
+        # load_bronze imports the package (landing-table DDL), so run it as a
+        # module with the project root on sys.path.
+        [sys.executable, "-m", "scripts.load_bronze"],
         [dbt, "build", "--project-dir", project, "--profiles-dir", project],
         [dbt, "parse", "--project-dir", project, "--profiles-dir", project],
     ]
@@ -207,6 +213,54 @@ try:
 except Exception as e:  # noqa: BLE001
     st.error(f"Could not load KPIs (is the warehouse built and dbt parsed?).\n\n{e}")
     st.stop()
+
+
+# --- Live (near-real-time) panel -------------------------------------------
+# Same governed metrics as the batch KPIs above, but on the streaming lane
+# (fact_sales_live / sales_live). Short cache TTL so it actually feels live;
+# freshness is read from the rt_freshness view, evaluated at query time.
+@st.cache_data(ttl=10, show_spinner=False)
+def get_live() -> dict:
+    # Call reporting.fetch directly (not the 600s-cached dashboard `fetch`) so the
+    # live panel honours its own short TTL.
+    df = reporting.fetch(["revenue_live", "orders_live"])
+    row = df.iloc[0].to_dict() if not df.empty else {}
+    return {
+        "revenue_live": float(row.get("revenue_live") or 0),
+        "orders_live": float(row.get("orders_live") or 0),
+    }
+
+
+with st.container(border=True):
+    head, refresh = st.columns([5, 1])
+    head.markdown("#### Live — near-real-time lane")
+    if refresh.button("↻ Refresh", use_container_width=True):
+        get_live.clear()
+        st.rerun()
+
+    fresh = read_freshness()
+    if fresh.no_events_yet:
+        st.info(
+            "No live events yet. Stream some with **`make stream`** "
+            "(or `make stream T=snowflake`), then hit ↻ Refresh."
+        )
+    else:
+        live = get_live()
+        l1, l2, l3 = st.columns(3)
+        l1.metric("Revenue (live)", eur(live["revenue_live"]))
+        l2.metric("Orders (live)", f"{live['orders_live']:,.0f}".replace(",", " "))
+        ok = fresh.within_sla(RT_SLA_SECONDS)
+        l3.metric(
+            f"{'🟢' if ok else '🔴'} Data freshness",
+            f"{fresh.freshness_seconds}s ago",
+            delta=("within SLA" if ok else f"stale (> {RT_SLA_SECONDS}s)"),
+            delta_color="normal" if ok else "inverse",
+        )
+        st.caption(
+            f"Streaming lane · SLA {RT_SLA_SECONDS}s · last event "
+            f"{fresh.last_event_ts:%H:%M:%S}. Same `revenue`/`orders` definitions "
+            "as the batch KPIs — only fresher."
+        )
 
 st.divider()
 
