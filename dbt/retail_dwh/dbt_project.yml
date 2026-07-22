@@ -26,3 +26,9 @@ models:
     marts:
       +materialized: table
       +schema: gold
+    # Near-real-time lane. Defaults to the Silver conventions; fact_sales_live
+    # overrides them in its own config() (gold schema + dynamic table on
+    # Snowflake / incremental on DuckDB).
+    streaming:
+      +materialized: view
+      +schema: silver

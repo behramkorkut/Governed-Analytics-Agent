@@ -23,7 +23,7 @@ select
     i.product_id,
     o.store_id,
     o.order_date,
-    cast(strftime(o.order_date, '%Y%m%d') as integer)     as date_id,         -- FK -> dim_dates
+    {{ date_id('o.order_date') }}                         as date_id,         -- FK -> dim_dates
     o.channel,
     o.status,
     i.quantity,

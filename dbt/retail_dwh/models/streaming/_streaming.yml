@@ -1,0 +1,76 @@
+version: 2
+
+models:
+  - name: stg_order_events
+    description: >
+      Cleaned streaming order events (Silver, near-real-time lane). Same
+      cast/conform contract as the batch staging models, but each row carries a
+      real `event_ts` timestamp instead of a day-grain date.
+    columns:
+      - name: event_id
+        description: "Natural key of the event."
+        data_tests: [not_null, unique]
+      - name: event_ts
+        description: "Event timestamp — enables 'last N minutes' windows."
+        data_tests: [not_null]
+      - name: channel
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["online", "in_store"]
+      - name: status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["completed", "returned", "cancelled"]
+
+  - name: fact_sales_live
+    description: >
+      Near-real-time twin of fact_sales: same order-line grain and the same
+      measure formulas, only fresher. Materialized as a Snowflake DYNAMIC TABLE
+      (TARGET_LAG = 1 minute) in prod and as an incremental model on DuckDB.
+    columns:
+      - name: event_id
+        description: "Primary key (one row per streamed order line)."
+        data_tests: [not_null, unique]
+      - name: event_ts
+        data_tests: [not_null]
+      - name: date_id
+        description: "FK -> dim_dates (day grain, for reuse of the date dimension)."
+        data_tests: [not_null]
+      - name: revenue
+        data_tests: [not_null]
+      - name: customer_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_customers')
+                field: customer_id
+      - name: product_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_products')
+                field: product_id
+      - name: store_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_stores')
+                field: store_id
+
+  - name: rt_freshness
+    description: >
+      Single-row VIEW exposing how fresh the streaming lane is, evaluated at
+      query time (seconds since the latest event). A view — not a table — so the
+      answer reflects "now", not the last refresh. The freshness SLA is enforced
+      by tests/assert_rt_freshness_within_sla.sql.
+    columns:
+      - name: freshness_seconds
+        description: "Seconds between the latest event and current_timestamp (null if no events yet)."
+      - name: no_events_yet
+        description: "True when the lane is empty (fresh clone / CI, before any stream)."
+        data_tests: [not_null]

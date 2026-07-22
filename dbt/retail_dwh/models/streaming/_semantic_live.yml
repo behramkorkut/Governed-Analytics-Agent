@@ -1,0 +1,93 @@
+semantic_models:
+  # ---------------------------------------------------------------------
+  # SALES_LIVE: the near-real-time twin of the `sales` semantic model.
+  #
+  # Two lanes, one vocabulary: this model declares the SAME foreign entities
+  # (customer / product / store) as the batch one, so MetricFlow reuses the
+  # existing dimension semantic models. "Live revenue by category" needs zero
+  # duplicated dimensions — only the fact and its time grain differ.
+  #
+  # The decisive difference is `agg_time_dimension: event_ts` at MINUTE grain:
+  # the batch lane is day-grain (order_date), which cannot answer
+  # "in the last 15 minutes".
+  # ---------------------------------------------------------------------
+  - name: sales_live
+    description: "Near-real-time sales facts at order-line grain (streaming lane)."
+    model: ref('fact_sales_live')
+    defaults:
+      agg_time_dimension: event_ts
+    entities:
+      - name: sales_live       # primary key of this table
+        type: primary
+        expr: event_id
+      - name: order            # degenerate, to count distinct live orders
+        type: foreign
+        expr: order_id
+      - name: customer         # FK -> customers semantic model (reused)
+        type: foreign
+        expr: customer_id
+      - name: product          # FK -> products semantic model (reused)
+        type: foreign
+        expr: product_id
+      - name: store            # FK -> stores semantic model (reused)
+        type: foreign
+        expr: store_id
+    dimensions:
+      - name: event_ts
+        description: "Event timestamp — enables 'last N minutes' windows."
+        type: time
+        type_params:
+          time_granularity: minute
+      - name: channel
+        type: categorical
+      - name: status
+        type: categorical
+    measures:
+      - name: revenue_live_amount
+        description: "Quantity x price charged, on streamed events."
+        agg: sum
+        expr: revenue
+      - name: gross_profit_live_amount
+        agg: sum
+        expr: profit
+      - name: quantity_live_amount
+        agg: sum
+        expr: quantity
+      - name: order_count_live_distinct
+        description: "Distinct live orders."
+        agg: count_distinct
+        expr: order_id
+
+metrics:
+  # The `_live` suffix is deliberate: metric names are globally unique in
+  # MetricFlow, and these answer a different question than their batch
+  # counterparts (fresh window vs. history). The *formulas* are identical —
+  # they are defined once, in fact_sales_live, exactly like the batch fact.
+  - name: revenue_live
+    description: "Revenue from streamed events (near-real-time lane)."
+    label: "Revenue (live)"
+    type: simple
+    type_params:
+      measure: revenue_live_amount
+
+  - name: gross_profit_live
+    description: "Gross profit from streamed events (near-real-time lane)."
+    label: "Gross profit (live)"
+    type: simple
+    type_params:
+      measure: gross_profit_live_amount
+
+  - name: orders_live
+    description: "Number of distinct orders in the streaming lane."
+    label: "Orders (live)"
+    type: simple
+    type_params:
+      measure: order_count_live_distinct
+
+  - name: average_order_value_live
+    description: "Revenue per order on streamed events (live AOV)."
+    label: "Average order value (live)"
+    type: ratio
+    type_params:
+      numerator: revenue_live
+      denominator: orders_live

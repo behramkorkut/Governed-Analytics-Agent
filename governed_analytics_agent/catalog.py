@@ -42,7 +42,10 @@ class Catalog:
             lines.append(f"  - {d}")
         lines.append(
             "TIME: use 'metric_time' for time series; add a grain like "
-            "metric_time__month / __quarter / __year."
+            "metric_time__month / __quarter / __year. Metrics whose name ends "
+            "in '_live' come from the near-real-time lane and support sub-daily "
+            "grains (metric_time__minute / __hour) — use them for questions "
+            "about the last minutes/hours; use the batch metrics for history."
         )
         return "\n".join(lines)
 

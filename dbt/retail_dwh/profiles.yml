@@ -1,15 +1,37 @@
 # dbt connection profile (kept inside the project for portability).
 # Run dbt with:  dbt run --profiles-dir .
 #
-# The DuckDB file path comes from the WAREHOUSE_DB env var (12-factor),
-# defaulting to the project's data/warehouse.duckdb. It must be the SAME
-# file that load_bronze.py wrote, because dbt reads the `bronze` schema
-# from it and writes silver/gold back into it.
+# Two interchangeable targets, selected by the DBT_TARGET env var (default dev):
+#   - dev  (DuckDB)    : local + CI. The DuckDB file path comes from WAREHOUSE_DB
+#                        (12-factor), defaulting to data/warehouse.duckdb. It must
+#                        be the SAME file that load_bronze.py wrote, because dbt
+#                        reads the `bronze` schema from it and writes silver/gold back.
+#   - prod (Snowflake) : the real cloud warehouse. All SNOWFLAKE_* come from the
+#                        env (never commit secrets). Select with:
+#                            DBT_TARGET=prod dbt build --profiles-dir .
+#                          or  dbt build --target prod --profiles-dir .
+#
+# Same models run on both — DuckDB↔Snowflake dialect gaps are isolated in
+# macros/portability.sql. CI never sets DBT_TARGET, so it stays on DuckDB.
 retail_dwh:
-  target: dev
+  target: "{{ env_var('DBT_TARGET', 'dev') }}"
   outputs:
     dev:
       type: duckdb
       path: "{{ env_var('WAREHOUSE_DB', 'data/warehouse.duckdb') }}"
       schema: main
       threads: 4
+
+    prod:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      # Password auth by default; swap for key-pair / SSO later if needed.
+      password: "{{ env_var('SNOWFLAKE_PASSWORD') }}"
+      role: "{{ env_var('SNOWFLAKE_ROLE', 'ACCOUNTADMIN') }}"
+      database: "{{ env_var('SNOWFLAKE_DATABASE', 'RETAIL_DWH') }}"
+      warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE', 'COMPUTE_WH') }}"
+      schema: "{{ env_var('SNOWFLAKE_SCHEMA', 'MAIN') }}"
+      threads: 4
+      # Cost discipline for the free trial: let the warehouse auto-suspend.
+      client_session_keep_alive: false

@@ -13,3 +13,8 @@ sources:
       - name: stores
       - name: orders
       - name: order_items
+      # Near-real-time landing table, fed by scripts/stream_orders.py (and by
+      # Snowpipe Streaming in production). Unlike the day-grain CSV extracts
+      # above, each row carries an `event_ts` timestamp — that is what makes
+      # "last N minutes" windows possible.
+      - name: order_events

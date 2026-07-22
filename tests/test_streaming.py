@@ -19,10 +19,17 @@ _VALID_STATUS = {s for s, _ in STATUS_WEIGHTS}
 _NOW = datetime(2026, 7, 20, 12, 0, 0, tzinfo=UTC)
 
 
-def test_make_event_is_deterministic_for_a_given_seed() -> None:
+def test_business_fields_are_deterministic_for_a_given_seed() -> None:
+    # event_id is a fresh uuid4 (unique per event); every OTHER field is
+    # deterministic for a given (seed, seq).
     e1 = make_event(random.Random(42), PRICES, 0, now=_NOW)
     e2 = make_event(random.Random(42), PRICES, 0, now=_NOW)
-    assert e1 == e2
+    assert e1.as_row()[1:] == e2.as_row()[1:]  # all fields except event_id
+
+
+def test_event_id_is_unique_across_events() -> None:
+    ids = {make_event(random.Random(42), PRICES, 0, now=_NOW).event_id for _ in range(50)}
+    assert len(ids) == 50  # a streaming source never replays an id
 
 
 def test_make_event_fields_are_valid() -> None:

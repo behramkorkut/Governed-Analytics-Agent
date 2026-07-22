@@ -13,7 +13,9 @@ from dataclasses import dataclass, field
 from .catalog import Catalog
 
 MAX_LIMIT = 1000
-TIME_GRAINS = {"day", "week", "month", "quarter", "year"}
+# Sub-daily grains (second/minute/hour) exist for the near-real-time lane only:
+# the batch semantic model is day-grain, the streaming one is minute-grain.
+TIME_GRAINS = {"second", "minute", "hour", "day", "week", "month", "quarter", "year"}
 OPERATORS = {"=", "!=", ">", ">=", "<", "<=", "in"}
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 MAX_VALUE_LEN = 64

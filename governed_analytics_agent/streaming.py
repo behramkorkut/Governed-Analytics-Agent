@@ -156,7 +156,10 @@ def make_event(
     discount = rng.choice([0.0, 0.05, 0.10, 0.15, 0.20])
     unit_price = round(list_price * (1 - discount), 2)
     return OrderEvent(
-        event_id=str(uuid.UUID(int=rng.getrandbits(128))),
+        # A real random UUID: unique across producer runs (a streaming source
+        # never replays identical ids). Business fields below stay deterministic
+        # for a given (seed, seq), which is what the tests pin down.
+        event_id=str(uuid.uuid4()),
         order_id=ORDER_ID_BASE + seq // ITEMS_PER_ORDER,
         order_item_id=ITEM_ID_BASE + seq,
         customer_id=rng.randint(1, 500),

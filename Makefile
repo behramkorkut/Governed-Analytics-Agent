@@ -21,7 +21,7 @@ setup: ## Install the environment (uv sync)
 
 data: ## Generate synthetic source data + load the Bronze layer
 	uv run python scripts/generate_raw_data.py
-	uv run python scripts/load_bronze.py
+	uv run python -m scripts.load_bronze
 
 stream: ## Stream live order events into ORDER_EVENTS (T=duckdb|snowflake, SECS=20)
 	uv run python -m scripts.stream_orders --target $(or $(T),duckdb) \
